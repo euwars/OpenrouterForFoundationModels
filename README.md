@@ -36,7 +36,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/<you>/OpenrouterForFoundationModels.git", from: "0.1.0")
+  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.1.0")
 ]
 ```
 
