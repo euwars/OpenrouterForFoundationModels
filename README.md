@@ -37,7 +37,7 @@ The bridge also compiles against [ServerFoundationModels](https://github.com/euw
 ```swift
 .package(
   url: "https://github.com/euwars/OpenrouterForFoundationModels.git",
-  branch: "main",
+  from: "0.1.0",
   traits: ["ServerFoundationModels"]
 )
 ```
