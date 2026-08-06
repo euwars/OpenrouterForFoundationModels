@@ -81,6 +81,22 @@ private let okBody = Data(
     #expect(agent.hasPrefix("OpenRouterForFoundationModels/\(Telemetry.sdkVersion)"))
   }
 
+  @Test func `base URLs with and without a v1 suffix reach the same endpoint`() async throws {
+    // Both conventions are common: host roots, and the OpenAI-SDK-style
+    // base URL that already ends in /v1.
+    let cases: [(base: String, expected: String)] = [
+      ("https://openrouter.ai/api", "https://openrouter.ai/api/v1/chat/completions"),
+      ("https://openrouter.ai/api/v1", "https://openrouter.ai/api/v1/chat/completions"),
+      ("https://openrouter.ai/api/v1/", "https://openrouter.ai/api/v1/chat/completions"),
+      ("https://proxy.example.com", "https://proxy.example.com/v1/chat/completions"),
+      ("https://proxy.example.com/openrouter", "https://proxy.example.com/openrouter/v1/chat/completions"),
+    ]
+    for (base, expected) in cases {
+      let endpoint = OpenRouterClient.endpoint(for: URL(string: base)!)
+      #expect(endpoint.absoluteString == expected, "base: \(base)")
+    }
+  }
+
   @Test func `per-request headers merge over defaults`() async throws {
     let transport = StubTransport(body: okBody)
     _ = try await drain(

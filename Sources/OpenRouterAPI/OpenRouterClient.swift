@@ -71,11 +71,23 @@ package struct OpenRouterClient: Sendable {
 
   // MARK: - Request building
 
+  /// The chat-completions endpoint for `baseURL`. Accepts both base-URL
+  /// conventions: a host root (`https://openrouter.ai/api`) gets
+  /// `v1/chat/completions` appended, while a URL already ending in the
+  /// OpenAI-style `/v1` (`https://openrouter.ai/api/v1` — what every
+  /// OpenAI-compatible SDK uses) gets only `chat/completions`.
+  package static func endpoint(for baseURL: URL) -> URL {
+    let lastComponent = baseURL.pathComponents.last { $0 != "/" }
+    return lastComponent == "v1"
+      ? baseURL.appending(path: "chat/completions")
+      : baseURL.appending(path: "v1/chat/completions")
+  }
+
   private func urlRequest(
     for body: ChatRequest,
     headers: [String: String]
   ) throws -> URLRequest {
-    var req = URLRequest(url: configuration.baseURL.appending(path: "v1/chat/completions"))
+    var req = URLRequest(url: Self.endpoint(for: configuration.baseURL))
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.setValue("text/event-stream", forHTTPHeaderField: "Accept")

@@ -73,7 +73,10 @@ public struct OpenRouterLanguageModel: Sendable {
   ///     caches warm across a conversation. Override per request via
   ///     ``OpenRouterMetadata/sessionID`` in `request.metadata`.
   ///   - baseURL: API endpoint. Override to point at a developer-run proxy
-  ///     (use with ``AuthMode/proxied(headers:)``).
+  ///     (use with ``AuthMode/proxied(headers:)``). Both conventions work:
+  ///     a host root (`https://openrouter.ai/api`) and the OpenAI-SDK-style
+  ///     base ending in `/v1` — `v1/chat/completions` or `chat/completions`
+  ///     is appended accordingly.
   ///   - timeout: Per-request timeout. The clock resets whenever bytes
   ///     arrive, and OpenRouter sends keep-alive comments while an upstream
   ///     model thinks, so this bounds silence, not total generation time.
