@@ -25,7 +25,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/euwars/ServerFoundationModels.git",
-      from: "0.1.2"
+      from: "0.6.0"
     )
   ],
   targets: [
