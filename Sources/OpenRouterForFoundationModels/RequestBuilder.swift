@@ -228,27 +228,13 @@ enum RequestBuilder {
 
     if let schema = request.schema {
       req.responseFormat = ResponseFormat(
-        name: schemaName(of: schema),
+        name: schema.name,
         strict: true,
         schema: jsonSchema(from: schema, strict: true, fidelity: schemaFidelity)
       )
     }
 
     return req
-  }
-
-  /// The wrapper name for `response_format.json_schema`.
-  private static func schemaName(of schema: GenerationSchema) -> String {
-    #if ServerFoundationModels
-    // ServerFoundationModels doesn't expose the root type name directly;
-    // recover it from the encoded schema's title when present.
-    if case .string(let title)? = JSONValue.encoded(schema)?["title"] {
-      return title
-    }
-    return "response"
-    #else
-    return schema.name
-    #endif
   }
 
   /// True when any schema on the request carries `@Guide` constraint
@@ -669,22 +655,6 @@ enum RequestBuilder {
     to req: inout ChatRequest
   ) {
     req.temperature = options.temperature
-    // The sampling vocabulary is identical; ServerFoundationModels spells
-    // the case names differently.
-    #if ServerFoundationModels
-    switch options.samplingMode?.kind {
-    case .greedy:
-      req.temperature = 0
-    case .top(let k, let seed):
-      req.topK = k
-      req.seed = seed.map { Int(clamping: $0) }
-    case .nucleus(let threshold, let seed):
-      req.topP = threshold
-      req.seed = seed.map { Int(clamping: $0) }
-    case nil:
-      break
-    }
-    #else
     switch options.samplingMode?.kind {
     case .greedy:
       req.temperature = 0
@@ -699,6 +669,5 @@ enum RequestBuilder {
     @unknown default:
       break
     }
-    #endif
   }
 }
