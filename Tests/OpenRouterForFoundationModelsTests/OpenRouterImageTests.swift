@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+#if canImport(CoreGraphics) && canImport(ImageIO)
+
 import CoreGraphics
 import Foundation
 #if ServerFoundationModels
@@ -100,3 +102,5 @@ private func decodedSize(_ data: Data) -> (width: Int, height: Int)? {
     #expect(url.hasPrefix("data:image/jpeg;base64,"))
   }
 }
+
+#endif

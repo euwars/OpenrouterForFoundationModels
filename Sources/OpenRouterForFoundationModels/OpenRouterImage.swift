@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
+// Decoded-image normalization needs CoreGraphics/ImageIO. On platforms
+// without them (Linux via ServerFoundationModels), attachments carry raw
+// bytes instead and RequestBuilder inlines them directly.
+#if canImport(CoreGraphics) && canImport(ImageIO)
+
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -162,3 +167,5 @@ struct OpenRouterImage: Sendable, Hashable {
     return out as Data
   }
 }
+
+#endif

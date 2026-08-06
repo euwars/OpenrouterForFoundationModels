@@ -158,7 +158,7 @@ enum RequestBuilder {
     messages = mergingConsecutiveAssistantMessages(messages)
 
     let isStructured = request.schema != nil
-    if let schema = request.schema {
+    if isStructured {
       // Unlike reasoning, a schema is a contract, not a hint — without
       // provider-side enforcement the response may not decode at all, so
       // failing loudly beats silently dropping it.
@@ -589,11 +589,14 @@ enum RequestBuilder {
     }
   }
 
-  /// Images inline as base64 JPEG data URLs — the shape every multimodal
-  /// endpoint behind OpenRouter accepts. ``OpenRouterImage`` normalizes on
-  /// the way: orientation baked in, downscaled to provider limits, metadata
-  /// stripped by re-encoding.
+  /// Images inline as base64 data URLs — the shape every multimodal
+  /// endpoint behind OpenRouter accepts. Where CoreGraphics exists,
+  /// ``OpenRouterImage`` normalizes on the way (orientation baked in,
+  /// downscaled to provider limits, metadata stripped by re-encoding).
+  /// On Linux, attachments carry raw encoded bytes; they inline as-is with
+  /// a sniffed media type.
   private static func dataURL(for image: Transcript.ImageAttachment) throws -> String {
+    #if canImport(CoreGraphics) && canImport(ImageIO)
     do {
       return try OpenRouterImage(
         cgImage: image.cgImage,
@@ -607,6 +610,32 @@ enum RequestBuilder {
         )
       )
     }
+    #else
+    let data = image.data
+    guard !data.isEmpty else {
+      throw LanguageModelError.unsupportedTranscriptContent(
+        .init(
+          unsupportedContent: [],
+          debugDescription: "Image attachment carries no data."
+        )
+      )
+    }
+    return "data:\(sniffedMediaType(of: data));base64,\(data.base64EncodedString())"
+    #endif
+  }
+
+  /// Magic-byte media-type detection for raw image bytes.
+  static func sniffedMediaType(of data: Data) -> String {
+    let prefix = [UInt8](data.prefix(12))
+    if prefix.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
+    if prefix.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "image/png" }
+    if prefix.starts(with: [0x47, 0x49, 0x46, 0x38]) { return "image/gif" }
+    if prefix.count >= 12, prefix[0...3] == [0x52, 0x49, 0x46, 0x46],
+      prefix[8...11] == [0x57, 0x45, 0x42, 0x50]
+    {
+      return "image/webp"
+    }
+    return "image/jpeg"
   }
 
   private static func toolDefinition(
@@ -653,8 +682,6 @@ enum RequestBuilder {
       req.topP = threshold
       req.seed = seed.map { Int(clamping: $0) }
     case nil:
-      break
-    default:
       break
     }
     #else

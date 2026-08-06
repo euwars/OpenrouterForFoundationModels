@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Testing
 
 @testable import OpenRouterAPI

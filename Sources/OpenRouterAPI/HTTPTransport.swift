@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// The HTTP seam ``OpenRouterClient`` talks through. Production uses
 /// ``URLSessionTransport``; tests inject a fake. The streaming body is surfaced
@@ -28,6 +31,7 @@ package struct URLSessionTransport: HTTPTransport {
   package func bytes(
     for request: URLRequest
   ) async throws -> (AsyncThrowingStream<UInt8, Error>, URLResponse) {
+    #if canImport(Darwin)
     // `bytes(for:)` returns once headers arrive, so the caller can check the
     // status before draining the body. Re-yield the bytes through a stream of
     // the transport's vocabulary type.
@@ -44,5 +48,16 @@ package struct URLSessionTransport: HTTPTransport {
       continuation.onTermination = { _ in task.cancel() }
     }
     return (stream, response)
+    #else
+    // corelibs-foundation has no `URLSession.bytes(for:)` — buffer the whole
+    // response and replay it as bytes. SSE frames all arrive at once, so
+    // responses are correct but not incrementally streamed on this path.
+    let (data, response) = try await session.data(for: request)
+    let stream = AsyncThrowingStream<UInt8, Error> { continuation in
+      for byte in data { continuation.yield(byte) }
+      continuation.finish()
+    }
+    return (stream, response)
+    #endif
   }
 }

@@ -8,7 +8,38 @@ import FoundationModels
 #endif
 import OpenRouterAPI
 import Synchronization
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(os)
 import os
+#endif
+
+/// Minimal portable logger: `os.Logger` on Apple platforms, stderr lines on
+/// Linux. All bridge log content is non-sensitive (model IDs, retry counts,
+/// validation messages).
+struct BridgeLog: Sendable {
+  #if canImport(os)
+  private let logger: Logger
+  init(category: String) {
+    self.logger = Logger(subsystem: "OpenRouterForFoundationModels", category: category)
+  }
+  func info(_ message: String) { logger.info("\(message, privacy: .public)") }
+  func warning(_ message: String) { logger.warning("\(message, privacy: .public)") }
+  func error(_ message: String) { logger.error("\(message, privacy: .public)") }
+  #else
+  private let category: String
+  init(category: String) { self.category = category }
+  private func emit(_ level: String, _ message: String) {
+    FileHandle.standardError.write(
+      Data("[OpenRouterForFoundationModels/\(category)] \(level): \(message)\n".utf8)
+    )
+  }
+  func info(_ message: String) { emit("info", message) }
+  func warning(_ message: String) { emit("warning", message) }
+  func error(_ message: String) { emit("error", message) }
+  #endif
+}
 
 /// Executes generation requests against OpenRouter's chat completions API.
 ///
@@ -115,10 +146,7 @@ public struct OpenRouterExecutor: LanguageModelExecutor {
     )
   }
 
-  private static let logger = Logger(
-    subsystem: "OpenRouterForFoundationModels",
-    category: "OpenRouterExecutor"
-  )
+  private static let logger = BridgeLog(category: "OpenRouterExecutor")
 
   public func respond(
     to request: LanguageModelExecutorGenerationRequest,
@@ -151,22 +179,19 @@ public struct OpenRouterExecutor: LanguageModelExecutor {
         guard let failure else {
           if attempt > 0 {
             Self.logger.info(
-              "structured output for \(modelID, privacy: .public) recovered on retry \(attempt)"
-            )
+              "structured output for \(modelID) recovered on retry \(attempt)")
           }
           await recorder.replay(into: channel)
           return
         }
         if attempt < retries {
           Self.logger.warning(
-            "structured output from \(modelID, privacy: .public) failed validation (attempt \(attempt + 1)/\(retries + 1)): \(failure, privacy: .public) — retrying"
-          )
+            "structured output from \(modelID) failed validation (attempt \(attempt + 1)/\(retries + 1)): \(failure) — retrying")
         } else {
           // Out of retries: forward the last attempt so the framework's own
           // decode reports the failure, exactly as with retries disabled.
           Self.logger.error(
-            "structured output from \(modelID, privacy: .public) still invalid after \(retries) retries: \(failure, privacy: .public) — forwarding for framework decode"
-          )
+            "structured output from \(modelID) still invalid after \(retries) retries: \(failure) — forwarding for framework decode")
           await recorder.replay(into: channel)
         }
       }
@@ -213,8 +238,7 @@ public struct OpenRouterExecutor: LanguageModelExecutor {
       // minimal vocabulary and remember the model, so bounds reach
       // providers that support them without breaking the ones that don't.
       Self.logger.info(
-        "provider rejected schema constraint keywords for \(self.configuration.model.id, privacy: .public); falling back to minimal schema vocabulary"
-      )
+        "provider rejected schema constraint keywords for \(configuration.model.id); falling back to minimal schema vocabulary")
       fidelityMemo.recordMinimal(configuration.model.id)
       let minimalRequest = try RequestBuilder.build(
         from: request,

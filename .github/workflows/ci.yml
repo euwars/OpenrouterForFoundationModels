@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Linux compatibility is load-bearing for the ServerFoundationModels
+  # backend — this job is the systematic guarantee it stays true.
+  linux:
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (ServerFoundationModels backend)
+        run: swift build --traits ServerFoundationModels --build-tests
+      - name: Test (offline suites; live suites self-gate on OPENROUTER_API_KEY)
+        run: swift test --traits ServerFoundationModels
+
+  # The Apple-framework configuration needs an Xcode 27 (OS 27 SDK) host.
+  # GitHub-hosted macOS runners don't ship it yet; enable this job when a
+  # macos image with Xcode 27 lands.
+  #
+  # macos:
+  #   runs-on: macos-27
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: swift test
+  #     - run: swift test --traits ServerFoundationModels

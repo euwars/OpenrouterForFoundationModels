@@ -180,7 +180,9 @@ struct OpenRouterExample {
       var printed = ""
       for try await snapshot in session.streamResponse(to: prompt) {
         print(snapshot.content.dropFirst(printed.count), terminator: "")
+        #if canImport(Darwin)
         fflush(stdout)
+        #endif
         printed = snapshot.content
       }
       print()

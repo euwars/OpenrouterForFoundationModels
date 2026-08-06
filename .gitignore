@@ -42,3 +42,4 @@ playground.xcworkspace
 *.log
 *.tmp
 .cache/
+.build-linux/

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Thin HTTP client for `POST {baseURL}/v1/chat/completions`.
 package struct OpenRouterClient: Sendable {

@@ -42,7 +42,9 @@ The bridge also compiles against [ServerFoundationModels](https://github.com/euw
 )
 ```
 
-The trait is off by default (Apple's framework, exactly as documented below). The full test suite passes under both backends.
+The trait is off by default (Apple's framework, exactly as documented below). The full test suite passes under both backends, including on Linux (`swift:6.2` container — verified in CI on every push).
+
+Linux notes: images attach as raw bytes and inline with a sniffed media type (no CoreGraphics normalization), retry logs go to stderr instead of `os.Logger`, and SSE responses arrive whole rather than incrementally — corelibs-foundation's `URLSession` has no byte-streaming API, so partial snapshots deliver at once when the response completes.
 
 ## Installation
 
