@@ -26,6 +26,15 @@ package struct ChatRequest: Sendable, Encodable {
   package var transforms: [String]?
   /// End-user identifier for abuse detection and per-user rate limits.
   package var user: String?
+  /// Cost/latency tier: `"flex"`, `"priority"`, or `"fast"` (priority alias).
+  package var serviceTier: String?
+  /// Sticky-routing key: subsequent requests with the same ID route to the
+  /// same provider endpoint, keeping prompt caches warm. Max 256 characters.
+  package var sessionID: String?
+  /// Top-level automatic cache control (Anthropic-family providers): the
+  /// breakpoint lands on the last cacheable block and advances as the
+  /// conversation grows.
+  package var cacheControl: CacheControl?
   package var stream: Bool
 
   package init(
@@ -44,6 +53,9 @@ package struct ChatRequest: Sendable, Encodable {
     provider: ProviderPreferences? = nil,
     transforms: [String]? = nil,
     user: String? = nil,
+    serviceTier: String? = nil,
+    sessionID: String? = nil,
+    cacheControl: CacheControl? = nil,
     stream: Bool = false
   ) {
     self.model = model
@@ -61,6 +73,9 @@ package struct ChatRequest: Sendable, Encodable {
     self.provider = provider
     self.transforms = transforms
     self.user = user
+    self.serviceTier = serviceTier
+    self.sessionID = sessionID
+    self.cacheControl = cacheControl
     self.stream = stream
   }
 
@@ -72,6 +87,9 @@ package struct ChatRequest: Sendable, Encodable {
     case topK = "top_k"
     case toolChoice = "tool_choice"
     case responseFormat = "response_format"
+    case serviceTier = "service_tier"
+    case sessionID = "session_id"
+    case cacheControl = "cache_control"
   }
 }
 
@@ -276,11 +294,13 @@ package enum ToolDefinition: Sendable, Hashable, Encodable {
       try f.encode(description, forKey: .description)
       try f.encode(parameters, forKey: .parameters)
     case .serverTool(let type, let options):
-      // Server tools encode flat: options sit beside `type`.
+      // Server-tool options nest under `parameters` — flat options beside
+      // `type` are silently ignored (verified against the live API: a flat
+      // `engine: "exa"` doesn't switch engines; a nested one does).
       var c = encoder.container(keyedBy: DynamicKey.self)
       try c.encode(type, forKey: DynamicKey("type"))
-      for (key, value) in options {
-        try c.encode(value, forKey: DynamicKey(key))
+      if !options.isEmpty {
+        try c.encode(JSONValue.object(options), forKey: DynamicKey("parameters"))
       }
     }
   }

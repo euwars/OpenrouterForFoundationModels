@@ -25,7 +25,7 @@ import Testing
     }
   }
 
-  @Test func `403 with moderation metadata maps to moderated`() {
+  @Test func `403 with moderation metadata maps to guardrailViolation`() {
     let error = APIError(
       code: 403,
       message: "Flagged",
@@ -36,13 +36,13 @@ import Testing
       ])
     )
     let mapped = ErrorMapper.map(error)
-    guard case OpenRouterError.moderated(let reasons, let input, let provider) = mapped else {
-      Issue.record("expected moderated, got \(mapped)")
+    guard case LanguageModelError.guardrailViolation(let details) = mapped else {
+      Issue.record("expected guardrailViolation, got \(mapped)")
       return
     }
-    #expect(reasons == ["violence"])
-    #expect(input == "bad text…")
-    #expect(provider == "SomeProvider")
+    #expect(details.debugDescription.contains("violence"))
+    #expect(details.metadata["reasons"] as? [String] == ["violence"])
+    #expect(details.metadata["provider"] as? String == "SomeProvider")
   }
 
   @Test func `403 without moderation metadata stays a plain api error`() {

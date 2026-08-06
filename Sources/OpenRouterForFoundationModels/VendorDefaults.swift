@@ -21,7 +21,6 @@ enum VendorDefaults {
     // Verified: strict structured output with enforced @Guide bounds,
     // reasoning, and tool calling. `.included` skips the constraint probe.
     "openai": verified,
-    "anthropic": verified,
     "google": verified,
     "deepseek": verified,
     "qwen": verified,
@@ -31,6 +30,12 @@ enum VendorDefaults {
     "mistralai": verified,
     "minimax": verified,
     "bytedance-seed": verified,
+
+    // Anthropic's strict schema validator rejects @Guide bound keywords
+    // (minItems, minimum, …) — the same reason Anthropic's own Foundation
+    // Models package strips them. Structured output, reasoning, and tools
+    // are otherwise fully verified.
+    "anthropic": .init(guideConstraints: .stripped),
 
     // llama-4-maverick: structured output and tools verified; not a
     // reasoning model family.

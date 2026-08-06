@@ -8,10 +8,11 @@ import Testing
 @Suite struct VendorDefaultsTests {
   @Test func `bare IDs resolve measured vendor defaults`() {
     // Verified vendors skip the guide-constraint probe.
-    #expect(
-      OpenRouterModel(id: "anthropic/claude-opus-5").capabilities.guideConstraints == .included
-    )
     #expect(OpenRouterModel(id: "openai/gpt-5.6-luna").capabilities.guideConstraints == .included)
+    // Anthropic's strict validator rejects bound keywords — measured live.
+    #expect(
+      OpenRouterModel(id: "anthropic/claude-opus-5").capabilities.guideConstraints == .stripped
+    )
 
     // Measured limitations apply.
     #expect(OpenRouterModel(id: "amazon/nova-2-lite-v1").capabilities.structuredOutput == false)

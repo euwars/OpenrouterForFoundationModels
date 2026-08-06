@@ -1,6 +1,44 @@
-.DS_Store
+# SwiftPM / build
 .build/
 .swiftpm/
-xcuserdata/
+Packages/
+Package.resolved
+
+# Xcode
 DerivedData/
-*.xcodeproj
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Secrets / local env (API keys for live tests)
+.env
+.env.*
+!.env.example
+
+# IDEs and agent tooling (local only)
+.vscode/
+.idea/
+.claude/
+*.swp
+*~
+.fleet/
+.cursor/
+
+# Logs / misc
+*.log
+*.tmp
+.cache/

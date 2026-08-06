@@ -215,17 +215,20 @@ struct StubbedOpenRouterModel: LanguageModel {
   let model: OpenRouterModel
   let attribution: Attribution?
   let caching: CachePolicy
+  let structuredOutputRetries: Int
 
   init(
     transport: MockTransport,
     model: OpenRouterModel = "test/model",
     attribution: Attribution? = nil,
-    caching: CachePolicy = .automatic
+    caching: CachePolicy = .automatic,
+    structuredOutputRetries: Int = 0
   ) {
     self.transport = transport
     self.model = model
     self.attribution = attribution
     self.caching = caching
+    self.structuredOutputRetries = structuredOutputRetries
   }
 
   init(fixture: Data) {
@@ -237,7 +240,13 @@ struct StubbedOpenRouterModel: LanguageModel {
   }
 
   var executorConfiguration: StubbedExecutor.Configuration {
-    .init(transport: transport, model: model, attribution: attribution, caching: caching)
+    .init(
+      transport: transport,
+      model: model,
+      attribution: attribution,
+      caching: caching,
+      structuredOutputRetries: structuredOutputRetries
+    )
   }
 }
 
@@ -249,10 +258,12 @@ struct StubbedExecutor: LanguageModelExecutor {
     let model: OpenRouterModel
     let attribution: Attribution?
     let caching: CachePolicy
+    let structuredOutputRetries: Int
 
     static func == (a: Self, b: Self) -> Bool {
       a.transport === b.transport && a.model == b.model
         && a.attribution == b.attribution && a.caching == b.caching
+        && a.structuredOutputRetries == b.structuredOutputRetries
     }
 
     func hash(into hasher: inout Hasher) {
@@ -273,7 +284,8 @@ struct StubbedExecutor: LanguageModelExecutor {
         authMode: .apiKey("sk-test"),
         timeout: 5,
         attribution: configuration.attribution,
-        caching: configuration.caching
+        caching: configuration.caching,
+        structuredOutputRetries: configuration.structuredOutputRetries
       ),
       transport: configuration.transport
     )

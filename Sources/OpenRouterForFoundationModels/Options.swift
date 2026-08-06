@@ -140,6 +140,25 @@ public struct Attribution: Sendable, Hashable {
   }
 }
 
+// MARK: - Service tier
+
+/// Cost/latency tier for providers that offer one (OpenAI, Google Vertex,
+/// Google AI Studio, xAI). Billing follows the tier that actually serves the
+/// request; the served tier is reported on the response transcript entry's
+/// metadata under ``OpenRouterMetadata/servedTier``.
+public enum ServiceTier: String, Sendable, Hashable {
+  /// Lower cost, higher latency and lower availability. Routing is
+  /// restricted to flex endpoints — a flex request never silently falls
+  /// back to a costlier standard endpoint.
+  case flex
+  /// Faster, higher cost. Falls back to standard endpoints (billed at their
+  /// rate) when no priority endpoint succeeds.
+  case priority
+  /// OpenAI's "Fast mode" alias for `priority`; on Anthropic models with a
+  /// fast sibling, reroutes to it.
+  case fast
+}
+
 // MARK: - Caching
 
 /// Prompt-cache breakpoint policy.

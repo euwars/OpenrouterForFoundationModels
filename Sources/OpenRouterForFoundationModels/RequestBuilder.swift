@@ -4,11 +4,6 @@ import Foundation
 import FoundationModels
 import OpenRouterAPI
 
-#if canImport(CoreImage)
-import CoreImage
-import UniformTypeIdentifiers
-#endif
-
 /// Marks a reasoning entry as carrying OpenRouter `reasoning_details` in its
 /// signature bytes (JSON-encoded array), replayed verbatim on later turns.
 let reasoningDetailsMetadataKey = "openrouter.reasoningDetails"
@@ -16,17 +11,30 @@ let reasoningDetailsMetadataKey = "openrouter.reasoningDetails"
 /// Well-known request-metadata keys the bridge forwards to OpenRouter.
 public enum OpenRouterMetadata {
   /// Set on `request.metadata` to send OpenRouter's `user` field — a stable
-  /// end-user identifier for abuse detection and per-user rate limits:
-  ///
-  /// ```swift
-  /// session.respond(to: prompt) // via a request whose metadata includes
-  /// // [OpenRouterMetadata.user: "user-1234"]
-  /// ```
+  /// end-user identifier for abuse detection and per-user rate limits.
   public static let user = "openrouter.user"
+  /// Set on `request.metadata` to send OpenRouter's `session_id` field for
+  /// this request, overriding the model's configured `sessionID`. Keeps
+  /// sticky provider routing (and therefore prompt caches) pinned per
+  /// conversation. Max 256 characters.
+  public static let sessionID = "openrouter.sessionID"
+  /// Key on the response transcript entry's metadata
+  /// (`Transcript.Response.metadata`) carrying the capacity tier that
+  /// served the request (`"default"`, `"flex"`, `"priority"`).
+  public static let servedTier = "openrouter.serviceTier"
+  /// Key on the response transcript entry's metadata carrying the credits
+  /// charged for the generation.
+  public static let cost = "openrouter.cost"
 }
 
 /// Pure translation: framework request → chat completions request body.
 enum RequestBuilder {
+  /// Output-token cap sent when the framework doesn't set one. A generation
+  /// left uncapped bills up to the provider's maximum — this bounds the
+  /// worst case while staying far above normal turns (and matches the
+  /// Claude bridge's default). Callers raise it per request via
+  /// `GenerationOptions.maximumResponseTokens`.
+  static let defaultMaxTokens = 16_000
   /// How much of the schema vocabulary to put on the wire.
   ///
   /// `@Guide` bounds (`minimum`, `minItems`, `pattern`, …) are standard JSON
@@ -166,7 +174,7 @@ enum RequestBuilder {
       messages.insert(.init(role: .system, content: [.text(system)]), at: 0)
     }
 
-    applyCacheBreakpoints(to: &messages, policy: configuration.caching)
+    applyCacheBreakpoints(to: &messages, policy: configuration.caching, modelID: model.id)
 
     let clientTools = request.enabledToolDefinitions.map {
       toolDefinition($0, fidelity: schemaFidelity)
@@ -184,7 +192,7 @@ enum RequestBuilder {
       model: model.id,
       models: configuration.fallbackModels.isEmpty ? nil : configuration.fallbackModels,
       messages: messages,
-      maxTokens: request.generationOptions.maximumResponseTokens,
+      maxTokens: request.generationOptions.maximumResponseTokens ?? defaultMaxTokens,
       tools: tools.isEmpty ? nil : tools,
       toolChoice: clientTools.isEmpty
         ? nil : toolChoice(for: request.generationOptions.toolCallingMode),
@@ -196,8 +204,19 @@ enum RequestBuilder {
       provider: wireProvider(configuration.provider, requireParameters: isStructured),
       transforms: configuration.transforms.isEmpty ? nil : configuration.transforms,
       user: request.metadata[OpenRouterMetadata.user] as? String,
+      serviceTier: configuration.serviceTier?.rawValue,
+      sessionID: request.metadata[OpenRouterMetadata.sessionID] as? String
+        ?? configuration.sessionID,
       stream: true
     )
+    if configuration.caching != .disabled, isAnthropicFamily(model.id) {
+      // Anthropic-family providers support automatic caching via top-level
+      // cache_control: the breakpoint lands on the last cacheable block and
+      // advances as the conversation grows — strictly better multi-turn
+      // than fixed per-block markers.
+      req.cacheControl = configuration.caching == .extended
+        ? CacheControl(ttl: "1h") : CacheControl()
+    }
     applySampling(request.generationOptions, to: &req)
 
     if let schema = request.schema {
@@ -433,14 +452,24 @@ enum RequestBuilder {
 
   // MARK: - Caching
 
+  /// Anthropic-family model IDs get top-level automatic `cache_control`
+  /// instead of per-block markers (including the `~anthropic/...` alias
+  /// namespace).
+  static func isAnthropicFamily(_ modelID: String) -> Bool {
+    modelID.hasPrefix("anthropic/") || modelID.hasPrefix("~anthropic/")
+  }
+
   /// Breakpoints go on the system message and the final user message: the
   /// system prefix is stable across turns, and marking the conversation tail
   /// lets the next turn read everything before it as a cache hit. Providers
-  /// with automatic caching ignore the markers.
+  /// with automatic caching ignore the markers. Anthropic-family models skip
+  /// these — they use top-level automatic `cache_control` instead.
   private static func applyCacheBreakpoints(
     to messages: inout [ChatMessage],
-    policy: CachePolicy
+    policy: CachePolicy,
+    modelID: String
   ) {
+    guard !isAnthropicFamily(modelID) else { return }
     let control: CacheControl
     switch policy {
     case .disabled: return
@@ -540,47 +569,24 @@ enum RequestBuilder {
   }
 
   /// Images inline as base64 JPEG data URLs — the shape every multimodal
-  /// endpoint behind OpenRouter accepts.
+  /// endpoint behind OpenRouter accepts. ``OpenRouterImage`` normalizes on
+  /// the way: orientation baked in, downscaled to provider limits, metadata
+  /// stripped by re-encoding.
   private static func dataURL(for image: Transcript.ImageAttachment) throws -> String {
-    #if canImport(CoreImage)
-    guard let data = jpegData(from: image.cgImage) else {
+    do {
+      return try OpenRouterImage(
+        cgImage: image.cgImage,
+        orientation: image.orientation
+      ).dataURL
+    } catch let error as OpenRouterImage.Error {
       throw LanguageModelError.unsupportedTranscriptContent(
         .init(
           unsupportedContent: [],
-          debugDescription: "Image could not be encoded for upload."
+          debugDescription: error.errorDescription ?? "Image could not be prepared for upload."
         )
       )
     }
-    return "data:image/jpeg;base64,\(data.base64EncodedString())"
-    #else
-    guard let url = image.url else {
-      throw LanguageModelError.unsupportedTranscriptContent(
-        .init(
-          unsupportedContent: [],
-          debugDescription:
-            "Image attachment without a URL is not supported on this platform."
-        )
-      )
-    }
-    if url.scheme == "data" { return url.absoluteString }
-    let data = try Data(contentsOf: url)
-    return "data:image/jpeg;base64,\(data.base64EncodedString())"
-    #endif
   }
-
-  #if canImport(CoreImage)
-  private static func jpegData(from cgImage: CGImage) -> Data? {
-    let data = NSMutableData()
-    guard
-      let destination = CGImageDestinationCreateWithData(
-        data, UTType.jpeg.identifier as CFString, 1, nil
-      )
-    else { return nil }
-    CGImageDestinationAddImage(destination, cgImage, nil)
-    guard CGImageDestinationFinalize(destination) else { return nil }
-    return Data(referencing: data)
-  }
-  #endif
 
   private static func toolDefinition(
     _ def: Transcript.ToolDefinition,

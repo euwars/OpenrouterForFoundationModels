@@ -98,11 +98,18 @@ package struct OpenRouterClient: Sendable {
   private static func check(_ response: URLResponse, body: Data) throws {
     guard let http = response as? HTTPURLResponse else { return }
     guard http.statusCode >= 400 else { return }
+    // Correlator for support and log lookup. OpenRouter exposes
+    // X-Generation-Id on generations; error responses usually carry only
+    // the CDN's cf-ray.
+    let requestID =
+      http.value(forHTTPHeaderField: "X-Generation-Id")
+      ?? http.value(forHTTPHeaderField: "cf-ray")
     if let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: body) {
       var error = envelope.error
       // The envelope's code is authoritative, but intermediaries sometimes
       // omit it — fall back to the HTTP status.
       if error.code == 0 { error.code = http.statusCode }
+      error.requestID = requestID
       throw error
     }
     // Cap the body excerpt so unexpected error pages can't flood logs via
@@ -114,6 +121,10 @@ package struct OpenRouterClient: Sendable {
     if body.count > maxBodyExcerpt {
       excerpt += "… [truncated, \(body.count) bytes total]"
     }
-    throw APIError(code: http.statusCode, message: "HTTP \(http.statusCode): \(excerpt)")
+    throw APIError(
+      code: http.statusCode,
+      message: "HTTP \(http.statusCode): \(excerpt)",
+      requestID: requestID
+    )
   }
 }

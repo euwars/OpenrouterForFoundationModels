@@ -28,6 +28,9 @@ public struct OpenRouterLanguageModel: Sendable {
   public let caching: CachePolicy
   public let transforms: [String]
   public let serverTools: Set<OpenRouterServerTool>
+  public let structuredOutputRetries: Int
+  public let serviceTier: ServiceTier?
+  public let sessionID: String?
   let authMode: AuthMode
 
   /// - Parameters:
@@ -53,6 +56,22 @@ public struct OpenRouterLanguageModel: Sendable {
   ///   - caching: Prompt-cache breakpoint policy for providers that need
   ///     explicit markers (Anthropic, Gemini). `.automatic` by default.
   ///   - transforms: OpenRouter prompt transforms, e.g. `["middle-out"]`.
+  ///   - structuredOutputRetries: How many times to silently re-request a
+  ///     guided-generation turn whose JSON fails schema validation (some
+  ///     providers aren't 100% reliable at strict structured output).
+  ///     0 — the default — forwards the first attempt as-is. When enabled,
+  ///     attempts buffer until valid, so partial snapshots arrive only from
+  ///     the accepted attempt; each retry is logged via `os.Logger`
+  ///     (subsystem `OpenRouterForFoundationModels`).
+  ///   - serviceTier: Cost/latency tier (`.flex`, `.priority`, `.fast`) on
+  ///     providers that offer one. Billing follows the tier that actually
+  ///     serves the request; the served tier and generation cost surface on
+  ///     each response transcript entry's metadata
+  ///     (``OpenRouterMetadata/servedTier``, ``OpenRouterMetadata/cost``).
+  ///   - sessionID: Sticky-routing key (max 256 characters). Requests with
+  ///     the same ID route to the same provider endpoint, keeping prompt
+  ///     caches warm across a conversation. Override per request via
+  ///     ``OpenRouterMetadata/sessionID`` in `request.metadata`.
   ///   - baseURL: API endpoint. Override to point at a developer-run proxy
   ///     (use with ``AuthMode/proxied(headers:)``).
   ///   - timeout: Per-request timeout. The clock resets whenever bytes
@@ -68,6 +87,9 @@ public struct OpenRouterLanguageModel: Sendable {
     attribution: Attribution? = nil,
     caching: CachePolicy = .automatic,
     transforms: [String] = [],
+    structuredOutputRetries: Int = 0,
+    serviceTier: ServiceTier? = nil,
+    sessionID: String? = nil,
     baseURL: URL = OpenRouterLanguageModel.defaultBaseURL,
     timeout: TimeInterval = 120
   ) {
@@ -80,6 +102,9 @@ public struct OpenRouterLanguageModel: Sendable {
     self.attribution = attribution
     self.caching = caching
     self.transforms = transforms
+    self.structuredOutputRetries = structuredOutputRetries
+    self.serviceTier = serviceTier
+    self.sessionID = sessionID
     self.baseURL = baseURL
     self.timeout = timeout
   }
@@ -113,7 +138,10 @@ extension OpenRouterLanguageModel: LanguageModel {
       fallbackModels: fallbackModels,
       attribution: attribution,
       caching: caching,
-      transforms: transforms
+      transforms: transforms,
+      structuredOutputRetries: structuredOutputRetries,
+      serviceTier: serviceTier,
+      sessionID: sessionID
     )
   }
 }

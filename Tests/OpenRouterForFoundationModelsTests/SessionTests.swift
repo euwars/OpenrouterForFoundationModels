@@ -35,6 +35,24 @@ import Testing
     #expect(usage.output.totalTokenCount == 7)
   }
 
+  @Test func `served tier and cost surface in usage metadata`() async throws {
+    let payloads = [
+      #"{"id":"gen-1","choices":[{"delta":{"content":"ok"}}],"service_tier":"flex"}"#,
+      #"{"id":"gen-1","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"cost":0.0012}}"#,
+    ]
+    let transport = MockTransport(body: sseBody(payloads))
+    let session = LanguageModelSession(model: StubbedOpenRouterModel(transport: transport))
+    _ = try await session.respond(to: "hi")
+    let response = try #require(
+      session.transcript.compactMap { entry -> Transcript.Response? in
+        if case .response(let r) = entry { return r }
+        return nil
+      }.last
+    )
+    #expect(response.metadata[OpenRouterMetadata.servedTier] as? String == "flex")
+    #expect(response.metadata[OpenRouterMetadata.cost] as? Double == 0.0012)
+  }
+
   @Test func `request carries auth, attribution, and endpoint path`() async throws {
     let transport = MockTransport(body: textTurnSSE(deltas: ["ok"]))
     let session = LanguageModelSession(
@@ -348,6 +366,44 @@ import Testing
     #expect(transport.requests.count == 1)
     let body = try requestBody(of: transport)
     #expect(schemaJSON(of: body).contains("minimum"))
+  }
+
+  @Test func `invalid structured output retries until valid when enabled`() async throws {
+    let transport = MockTransport(
+      responses: [
+        // Attempt 1: parseable JSON that violates the schema (days missing).
+        (200, textTurnSSE(deltas: [#"{"wrong":true}"#])),
+        // Attempt 2: conforming.
+        (200, textTurnSSE(deltas: [#"{"days":4}"#])),
+      ]
+    )
+    let session = LanguageModelSession(
+      model: StubbedOpenRouterModel(transport: transport, structuredOutputRetries: 2)
+    )
+    let response = try await session.respond(to: "How long?", generating: Bounded.self)
+    #expect(response.content.days == 4)
+    #expect(transport.requests.count == 2)
+  }
+
+  @Test func `invalid structured output is forwarded when retries are off`() async throws {
+    let transport = MockTransport(body: textTurnSSE(deltas: [#"{"wrong":true}"#]))
+    let session = LanguageModelSession(model: StubbedOpenRouterModel(transport: transport))
+    await #expect(throws: (any Error).self) {
+      _ = try await session.respond(to: "How long?", generating: Bounded.self)
+    }
+    #expect(transport.requests.count == 1)
+  }
+
+  @Test func `exhausted structured retries forward the last attempt`() async throws {
+    let transport = MockTransport(body: textTurnSSE(deltas: [#"{"wrong":true}"#]))
+    let session = LanguageModelSession(
+      model: StubbedOpenRouterModel(transport: transport, structuredOutputRetries: 2)
+    )
+    await #expect(throws: (any Error).self) {
+      _ = try await session.respond(to: "How long?", generating: Bounded.self)
+    }
+    // Initial attempt + 2 retries, then the framework's own decode error.
+    #expect(transport.requests.count == 3)
   }
 
   @Test func `non-schema 400s do not retry`() async throws {

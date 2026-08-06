@@ -30,35 +30,47 @@ struct EventTranslator: Sendable {
   /// still arrive via `updateUsage`.
   static let deltaTokenCount = 1
 
-  /// Relays all channel writes so the first-write callback is handled in
-  /// one place instead of at every send site.
-  private final class ChannelSink {
-    private let channel: LanguageModelExecutorGenerationChannel
+  /// Relays all writes so the first-write callback is handled in one place
+  /// instead of at every send site.
+  private final class FirstWriteSink {
+    private let sink: any GenerationEventSink
     private var pendingFirstWrite: (@Sendable () -> Void)?
 
     init(
-      _ channel: LanguageModelExecutorGenerationChannel,
+      _ sink: any GenerationEventSink,
       onFirstWrite: (@Sendable () -> Void)?
     ) {
-      self.channel = channel
+      self.sink = sink
       self.pendingFirstWrite = onFirstWrite
     }
 
     func send(_ event: LanguageModelExecutorGenerationChannel.Event) async {
       pendingFirstWrite?()
       pendingFirstWrite = nil
-      await channel.send(event)
+      await sink.send(event)
     }
   }
 
-  /// - Parameter onFirstChannelWrite: Invoked once, immediately before the
-  ///   first write to the channel. Chunks that write nothing don't trigger it.
   func translate(
     _ chunks: AsyncThrowingStream<ChatChunk, Error>,
     into channel: LanguageModelExecutorGenerationChannel,
     onFirstChannelWrite: (@Sendable () -> Void)? = nil
   ) async throws {
-    let channel = ChannelSink(channel, onFirstWrite: onFirstChannelWrite)
+    try await translate(
+      chunks,
+      into: DirectChannelSink(channel),
+      onFirstChannelWrite: onFirstChannelWrite
+    )
+  }
+
+  /// - Parameter onFirstChannelWrite: Invoked once, immediately before the
+  ///   first write to the sink. Chunks that write nothing don't trigger it.
+  func translate(
+    _ chunks: AsyncThrowingStream<ChatChunk, Error>,
+    into sink: any GenerationEventSink,
+    onFirstChannelWrite: (@Sendable () -> Void)? = nil
+  ) async throws {
+    let channel = FirstWriteSink(sink, onFirstWrite: onFirstChannelWrite)
     // Per-index `id`/`name` for tool calls. The first delta for a given index
     // supplies them; later deltas at the same index typically carry only
     // argument fragments and are routed using these latched values. Argument
@@ -71,6 +83,10 @@ struct EventTranslator: Sendable {
     // builder can replay them verbatim on later turns — models with signed
     // or encrypted reasoning require the blocks back unmodified.
     var details = ReasoningDetailAccumulator()
+
+    // The tier that actually served the request, when reported. Carried
+    // into usage metadata so apps can verify flex/priority billing.
+    var servedTier: String?
 
     // OpenAI-style refusals stream as `delta.refusal` text and end the turn
     // with a normal finish reason. Accumulate and fail the turn — text that
@@ -161,6 +177,7 @@ struct EventTranslator: Sendable {
         }
 
         if let text = delta.content, !text.isEmpty {
+          sink.recordResponseText(text)
           await channel.send(
             .response(
               entryID: responseEntryID,
@@ -170,9 +187,28 @@ struct EventTranslator: Sendable {
         }
       }
 
+      if let tier = chunk.serviceTier {
+        servedTier = tier
+      }
+
       // Usage arrives on the final chunk. Send AFTER content so the
       // authoritative cumulative totals overwrite the per-delta placeholders.
       if let usage = chunk.usage {
+        var metadata: [String: any Sendable & Codable & Equatable] = [:]
+        if let cost = usage.cost {
+          metadata[OpenRouterMetadata.cost] = cost
+        }
+        if let servedTier {
+          metadata[OpenRouterMetadata.servedTier] = servedTier
+        }
+        if !metadata.isEmpty {
+          // Cost and served tier land on the response transcript entry,
+          // where apps can read them (`Transcript.Response.metadata`) —
+          // the session's aggregated usage doesn't carry per-turn metadata.
+          await channel.send(
+            .response(entryID: responseEntryID, action: .updateMetadata(metadata))
+          )
+        }
         await channel.send(
           .response(
             entryID: responseEntryID,
@@ -184,7 +220,8 @@ struct EventTranslator: Sendable {
               output: .init(
                 totalTokenCount: usage.completionTokens ?? 0,
                 reasoningTokenCount: usage.completionTokensDetails?.reasoningTokens ?? 0
-              )
+              ),
+              metadata: metadata
             )
           )
         )
@@ -216,6 +253,55 @@ struct EventTranslator: Sendable {
           action: .updateSignature(payload, tokenCount: 0)
         )
       )
+    }
+  }
+}
+
+/// Where translated events land. Production writes straight to the
+/// framework's channel; the structured-output retry path records events so
+/// an invalid attempt can be discarded and re-tried instead of reaching the
+/// framework.
+protocol GenerationEventSink: AnyObject {
+  func send(_ event: LanguageModelExecutorGenerationChannel.Event) async
+  /// Response-text deltas, reported alongside the events they ride in —
+  /// `Event` is opaque, so the recorder can't extract text from it.
+  func recordResponseText(_ text: String)
+}
+
+extension GenerationEventSink {
+  func recordResponseText(_ text: String) {}
+}
+
+final class DirectChannelSink: GenerationEventSink {
+  private let channel: LanguageModelExecutorGenerationChannel
+
+  init(_ channel: LanguageModelExecutorGenerationChannel) {
+    self.channel = channel
+  }
+
+  func send(_ event: LanguageModelExecutorGenerationChannel.Event) async {
+    await channel.send(event)
+  }
+}
+
+/// Buffers a whole attempt. `structuredText` accumulates the response text
+/// so it can be validated against the schema before anything reaches the
+/// framework; `replay(into:)` forwards the attempt once accepted.
+final class RecordingChannelSink: GenerationEventSink {
+  private(set) var events: [LanguageModelExecutorGenerationChannel.Event] = []
+  private(set) var structuredText = ""
+
+  func send(_ event: LanguageModelExecutorGenerationChannel.Event) async {
+    events.append(event)
+  }
+
+  func recordResponseText(_ text: String) {
+    structuredText += text
+  }
+
+  func replay(into channel: LanguageModelExecutorGenerationChannel) async {
+    for event in events {
+      await channel.send(event)
     }
   }
 }

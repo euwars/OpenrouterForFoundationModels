@@ -16,10 +16,6 @@ public enum OpenRouterError: LocalizedError, Sendable {
   /// The account or key has run out of credits (HTTP 402). Top up, or raise
   /// the key's limit.
   case insufficientCredits(message: String)
-  /// The input was flagged by moderation (HTTP 403). `reasons` lists why;
-  /// `flaggedInput` is the offending excerpt; `provider` is the endpoint
-  /// that flagged it.
-  case moderated(reasons: [String], flaggedInput: String?, provider: String?)
   /// No provider matched the routing requirements (HTTP 503) — e.g.
   /// `require_parameters` plus a parameter no endpoint supports, or an
   /// over-restrictive provider filter.
@@ -38,10 +34,6 @@ public enum OpenRouterError: LocalizedError, Sendable {
       "OpenRouter rejected the credential: \(message)"
     case .insufficientCredits(let message):
       "Insufficient OpenRouter credits: \(message)"
-    case .moderated(let reasons, _, let provider):
-      "Input flagged by moderation"
-        + (provider.map { " (\($0))" } ?? "")
-        + (reasons.isEmpty ? "" : ": \(reasons.joined(separator: ", "))")
     case .noProviderAvailable(let message):
       "No provider meets the routing requirements: \(message)"
     case .providerFailure(let message):

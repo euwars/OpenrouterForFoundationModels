@@ -27,7 +27,7 @@ public struct OpenRouterServerTool: Sendable, Hashable {
   }
 
   enum Kind: Sendable, Hashable {
-    case webSearch(maxResults: Int?, engine: SearchEngine?, searchPrompt: String?)
+    case webSearch(maxResults: Int?, engine: SearchEngine?)
   }
 
   let kind: Kind
@@ -37,25 +37,20 @@ public struct OpenRouterServerTool: Sendable, Hashable {
   /// - Parameters:
   ///   - maxResults: Results per search (engine defaults apply when nil).
   ///   - engine: Search backend; nil lets OpenRouter choose.
-  ///   - searchPrompt: Custom instruction attached to search results.
   public static func webSearch(
     maxResults: Int? = nil,
-    engine: SearchEngine? = nil,
-    searchPrompt: String? = nil
+    engine: SearchEngine? = nil
   ) -> OpenRouterServerTool {
-    OpenRouterServerTool(
-      kind: .webSearch(maxResults: maxResults, engine: engine, searchPrompt: searchPrompt)
-    )
+    OpenRouterServerTool(kind: .webSearch(maxResults: maxResults, engine: engine))
   }
 
   /// The wire `tools`-array entry.
   var toolDefinition: ToolDefinition {
     switch kind {
-    case .webSearch(let maxResults, let engine, let searchPrompt):
+    case .webSearch(let maxResults, let engine):
       var options: [String: JSONValue] = [:]
       if let maxResults { options["max_results"] = .number(Double(maxResults)) }
       if let engine { options["engine"] = .string(engine.rawValue) }
-      if let searchPrompt { options["search_prompt"] = .string(searchPrompt) }
       return .serverTool(type: "openrouter:web_search", options: options)
     }
   }

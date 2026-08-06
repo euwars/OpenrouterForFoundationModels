@@ -23,6 +23,22 @@ import Testing
     #expect(request.messages[1].role == .user)
     #expect(request.messages[1].content == [.text("Hello")])
     #expect(request.stream)
+    // An uncapped generation bills up to the provider's maximum; the bridge
+    // always sends a ceiling.
+    #expect(request.maxTokens == RequestBuilder.defaultMaxTokens)
+  }
+
+  @Test func `framework response-token limit overrides the default cap`() throws {
+    var options = GenerationOptions()
+    options.maximumResponseTokens = 512
+    let request = try RequestBuilder.build(
+      from: .make(
+        transcript: Transcript(entries: [.prompt(.init(segments: [.text(.init(content: "Hi"))]))]),
+        generationOptions: options
+      ),
+      configuration: .make()
+    )
+    #expect(request.maxTokens == 512)
   }
 
   @Test func `multi-turn entries map to alternating messages`() throws {
@@ -346,6 +362,60 @@ import Testing
     )
     #expect(request.reasoning?.maxTokens == 2048)
     #expect(request.reasoning?.effort == nil)
+  }
+
+  @Test func `anthropic models get top-level automatic cache control`() throws {
+    let transcript = Transcript(entries: [
+      .instructions(.init(segments: [.text(.init(content: "Be concise."))], toolDefinitions: [])),
+      .prompt(.init(segments: [.text(.init(content: "Hi"))])),
+    ])
+    let request = try RequestBuilder.build(
+      from: .make(transcript: transcript),
+      configuration: .make(model: "anthropic/claude-sonnet-4.5", caching: .automatic)
+    )
+    // Top-level automatic cache control, no per-block markers.
+    #expect(request.cacheControl != nil)
+    #expect(request.messages[0].content == [.text("Be concise.")])
+    #expect(request.messages[1].content == [.text("Hi")])
+  }
+
+  @Test func `service tier and session id flow to the wire`() throws {
+    var configuration = OpenRouterExecutor.Configuration.make()
+    configuration = .init(
+      model: configuration.model,
+      baseURL: configuration.baseURL,
+      authMode: configuration.authMode,
+      timeout: configuration.timeout,
+      serviceTier: .flex,
+      sessionID: "session-1"
+    )
+    let request = try RequestBuilder.build(
+      from: .make(
+        transcript: Transcript(entries: [.prompt(.init(segments: [.text(.init(content: "Hi"))]))])
+      ),
+      configuration: configuration
+    )
+    #expect(request.serviceTier == "flex")
+    #expect(request.sessionID == "session-1")
+  }
+
+  @Test func `metadata session id overrides the configured one`() throws {
+    var configuration = OpenRouterExecutor.Configuration.make()
+    configuration = .init(
+      model: configuration.model,
+      baseURL: configuration.baseURL,
+      authMode: configuration.authMode,
+      timeout: configuration.timeout,
+      sessionID: "configured"
+    )
+    let request = try RequestBuilder.build(
+      from: .make(
+        transcript: Transcript(entries: [.prompt(.init(segments: [.text(.init(content: "Hi"))]))]),
+        metadata: [OpenRouterMetadata.sessionID: "per-request"]
+      ),
+      configuration: configuration
+    )
+    #expect(request.sessionID == "per-request")
   }
 
   @Test func `automatic caching marks system and last user message`() throws {

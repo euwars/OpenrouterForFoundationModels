@@ -15,7 +15,9 @@ Use any [OpenRouter](https://openrouter.ai) model as a server-side language mode
 - [Streaming](#streaming)
 - [Structured output](#structured-output)
 - [Reasoning](#reasoning)
+- [Server-side web search](#server-side-web-search)
 - [Prompt caching](#prompt-caching)
+- [Service tiers](#service-tiers)
 - [Provider routing and fallbacks](#provider-routing-and-fallbacks)
 - [App attribution](#app-attribution)
 - [Error handling](#error-handling)
@@ -80,7 +82,7 @@ OPENROUTER_API_KEY=<key> swift run OpenRouterExample \
 
 ## Choosing a model
 
-Any OpenRouter model ID works as a string literal — `"openai/gpt-5.2"`, `"google/gemini-3-pro"`, `"deepseek/deepseek-v4"`, including variant suffixes like `:nitro` and `:floor`. OpenRouter drops request parameters an endpoint doesn't support, so the default capabilities are permissive.
+Any OpenRouter model ID works as a string literal — `"openai/gpt-5.2"`, `"google/gemini-3-pro"`, `"deepseek/deepseek-v4"`, including variant suffixes like `:nitro` and `:floor`. Bare IDs resolve **measured per-vendor defaults** (`VendorDefaults.swift`, seeded by running `ModelConformanceTests` against each top vendor's most-used model) — e.g. `amazon/*` models don't accept `response_format` on OpenRouter, so guided generation fails fast client-side; `cohere/*` gets no reasoning or tool routing. Unknown vendors get permissive defaults, since OpenRouter drops parameters an endpoint doesn't support.
 
 Override capabilities when the framework shouldn't route certain work to the model at all:
 
@@ -175,9 +177,41 @@ OpenRouterLanguageModel(name: "openai/gpt-5.2", auth: auth, reasoning: .effort(.
 
 Streamed reasoning surfaces as the session's reasoning entries. OpenRouter's `reasoning_details` blocks (signed, summarized, or encrypted thoughts) are preserved on the transcript and replayed verbatim on later turns — required to keep the thought chain valid across tool-use turns on models that sign their reasoning.
 
+### Retrying unreliable providers
+
+Some endpoints occasionally return JSON that violates the schema. `structuredOutputRetries` re-requests such turns transparently (default 0 — off). Attempts buffer until one validates, and every retry is logged via `os.Logger` (subsystem `OpenRouterForFoundationModels`):
+
+```swift
+OpenRouterLanguageModel(name: model, auth: auth, structuredOutputRetries: 2)
+```
+
+## Server-side web search
+
+`openrouter:web_search` runs on OpenRouter's infrastructure within the request — the model decides when to search:
+
+```swift
+let model = OpenRouterLanguageModel(
+  name: "openai/gpt-5.2",
+  auth: auth,
+  serverTools: [.webSearch(maxResults: 5)]
+)
+```
+
+Citations surface on the transcript as ``OpenRouterCitationSegment`` custom segments (URL, title, excerpt), ready for grounded-source UI:
+
+```swift
+for case .response(let response) in session.transcript {
+  for case .custom(let segment) in response.segments {
+    if let citation = segment as? OpenRouterCitationSegment {
+      print(citation.content.title ?? citation.content.url)
+    }
+  }
+}
+```
+
 ## Prompt caching
 
-Providers that cache automatically (OpenAI, DeepSeek, Groq, …) need nothing. Anthropic and Gemini require explicit `cache_control` breakpoints; by default the bridge marks the system message and the final user message each turn, so a growing conversation re-reads its prefix from cache. Providers that don't use breakpoints ignore them.
+Providers that cache automatically (OpenAI, DeepSeek, Groq, …) need nothing. For providers that want explicit markers, the bridge applies the right mechanism per model family: Anthropic models get top-level automatic `cache_control` (the breakpoint advances with the conversation), while Gemini, Qwen, and other breakpoint providers get `cache_control` markers on the system message and the final user message. Either way a growing conversation re-reads its prefix from cache.
 
 ```swift
 OpenRouterLanguageModel(name: model, auth: auth, caching: .automatic)  // default, ~5 min TTL
@@ -186,6 +220,31 @@ OpenRouterLanguageModel(name: model, auth: auth, caching: .disabled)
 ```
 
 Cache hits are reported through the session's usage (`usage.input.cachedTokenCount`).
+
+For multi-turn agent workflows, pin OpenRouter's sticky provider routing (which keeps caches warm across requests) with a session ID — per model, or per request via metadata:
+
+```swift
+OpenRouterLanguageModel(name: model, auth: auth, sessionID: "agent-session-123")
+// or per request: request.metadata[OpenRouterMetadata.sessionID] = "agent-session-123"
+```
+
+## Service tiers
+
+Trade cost against latency on providers that offer tiers (OpenAI, Google, xAI):
+
+```swift
+OpenRouterLanguageModel(name: "openai/gpt-5.2", auth: auth, serviceTier: .flex)     // ~50% cheaper, slower
+OpenRouterLanguageModel(name: "openai/gpt-5.2", auth: auth, serviceTier: .priority) // faster, costlier
+```
+
+Billing follows the tier that actually served the request. The served tier and the generation's cost arrive on each response's transcript entry:
+
+```swift
+for case .response(let response) in session.transcript {
+  let tier = response.metadata[OpenRouterMetadata.servedTier] as? String
+  let cost = response.metadata[OpenRouterMetadata.cost] as? Double
+}
+```
 
 ## Provider routing and fallbacks
 
@@ -227,10 +286,11 @@ do {
   print(response.content)
 } catch OpenRouterError.insufficientCredits {
   // Send the user to top up.
-} catch OpenRouterError.moderated(let reasons, _, _) {
-  // Input was flagged; adjust and retry.
+} catch LanguageModelError.guardrailViolation(let details) {
+  // Input flagged by moderation or a provider content filter;
+  // details.metadata carries the reasons when OpenRouter reports them.
 } catch let error as LanguageModelError {
-  // Guardrails, rate limits, context length, decoding.
+  // Rate limits, context length, timeouts, decoding.
 }
 ```
 
@@ -238,7 +298,7 @@ Mid-stream provider failures (which arrive over HTTP 200) also fail the turn wit
 
 ## What this package provides
 
-The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `OpenRouterLanguageModel`, `OpenRouterModel`, `AuthMode`, `ReasoningPolicy`, `ProviderPreferences`, `Attribution`, `CachePolicy`, and `OpenRouterError`. It is not a general-purpose OpenRouter API client.
+The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `OpenRouterLanguageModel`, `OpenRouterModel`, `AuthMode`, `ReasoningPolicy`, `ProviderPreferences`, `OpenRouterServerTool`, `OpenRouterCitationSegment`, `Attribution`, `CachePolicy`, `ServiceTier`, `OpenRouterMetadata`, and `OpenRouterError` — plus per-model knobs like `structuredOutputRetries` and `sessionID`. It is not a general-purpose OpenRouter API client.
 
 ## License
 

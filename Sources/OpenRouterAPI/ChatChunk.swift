@@ -13,8 +13,14 @@ package struct ChatChunk: Sendable, Decodable {
   package var choices: [Choice]
   package var usage: Usage?
   package var error: APIError?
+  /// The capacity tier that actually served the request (`default`, `flex`,
+  /// `priority`), when the provider reports one.
+  package var serviceTier: String?
 
-  private enum CodingKeys: String, CodingKey { case id, model, choices, usage, error }
+  private enum CodingKeys: String, CodingKey {
+    case id, model, choices, usage, error
+    case serviceTier = "service_tier"
+  }
 
   package init(from decoder: Decoder) throws {
     let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -23,6 +29,7 @@ package struct ChatChunk: Sendable, Decodable {
     choices = try c.decodeIfPresent([Choice].self, forKey: .choices) ?? []
     usage = try c.decodeIfPresent(Usage.self, forKey: .usage)
     error = try c.decodeIfPresent(APIError.self, forKey: .error)
+    serviceTier = try c.decodeIfPresent(String.self, forKey: .serviceTier)
   }
 
   package struct Choice: Sendable, Decodable {

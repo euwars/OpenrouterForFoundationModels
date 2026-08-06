@@ -40,6 +40,15 @@ private func encodedJSON(_ value: some Encodable) throws -> [String: Any] {
     #expect(json["tool_choice"] as? String == "required")
     #expect(json["transforms"] as? [String] == ["middle-out"])
     #expect(json["stream"] as? Bool == true)
+    request.serviceTier = "flex"
+    request.sessionID = "abc"
+    request.cacheControl = CacheControl(ttl: "1h")
+    let extended = try encodedJSON(request)
+    #expect(extended["service_tier"] as? String == "flex")
+    #expect(extended["session_id"] as? String == "abc")
+    let cache = try #require(extended["cache_control"] as? [String: Any])
+    #expect(cache["type"] as? String == "ephemeral")
+    #expect(cache["ttl"] as? String == "1h")
     let reasoning = try #require(json["reasoning"] as? [String: Any])
     #expect(reasoning["effort"] as? String == "high")
     #expect(reasoning["exclude"] as? Bool == true)
@@ -118,6 +127,31 @@ private func encodedJSON(_ value: some Encodable) throws -> [String: Any] {
     #expect(json["role"] as? String == "tool")
     #expect(json["tool_call_id"] as? String == "call_1")
     #expect(json["content"] as? String == "ok")
+  }
+
+  @Test func `server tools nest options under parameters`() throws {
+    // Golden wire shape — flat options beside `type` are silently ignored
+    // by the live API, so this nesting is load-bearing.
+    let json = try encodedJSON(
+      ToolDefinition.serverTool(
+        type: "openrouter:web_search",
+        options: ["max_results": .number(3), "engine": .string("exa")]
+      )
+    )
+    #expect(json["type"] as? String == "openrouter:web_search")
+    #expect(json["max_results"] == nil)
+    #expect(json["engine"] == nil)
+    let parameters = try #require(json["parameters"] as? [String: Any])
+    #expect(parameters["max_results"] as? Double == 3)
+    #expect(parameters["engine"] as? String == "exa")
+  }
+
+  @Test func `server tools without options omit parameters`() throws {
+    let json = try encodedJSON(
+      ToolDefinition.serverTool(type: "openrouter:web_search", options: [:])
+    )
+    #expect(json["type"] as? String == "openrouter:web_search")
+    #expect(json["parameters"] == nil)
   }
 
   @Test func `tool definitions wrap in a function envelope`() throws {

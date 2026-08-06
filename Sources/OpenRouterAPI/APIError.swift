@@ -14,11 +14,21 @@ package struct APIError: Error, Sendable, Hashable, Codable {
   package var message: String
   /// Provider- or moderation-specific detail. Shape varies by error.
   package var metadata: JSONValue?
+  /// Correlator for support and log lookup: the `X-Generation-Id` response
+  /// header when present, else the CDN's `cf-ray`. Not part of the JSON
+  /// envelope — attached from response headers by the client.
+  package var requestID: String?
 
-  package init(code: Int, message: String, metadata: JSONValue? = nil) {
+  package init(
+    code: Int,
+    message: String,
+    metadata: JSONValue? = nil,
+    requestID: String? = nil
+  ) {
     self.code = code
     self.message = message
     self.metadata = metadata
+    self.requestID = requestID
   }
 
   private enum CodingKeys: String, CodingKey { case code, message, metadata }
@@ -36,6 +46,7 @@ package struct APIError: Error, Sendable, Hashable, Codable {
     }
     message = try c.decodeIfPresent(String.self, forKey: .message) ?? "Unknown error"
     metadata = try c.decodeIfPresent(JSONValue.self, forKey: .metadata)
+    requestID = nil
   }
 
   // MARK: - Moderation metadata
@@ -62,6 +73,7 @@ extension APIError: LocalizedError {
   package var errorDescription: String? {
     "OpenRouter error \(code): \(message)"
       + (providerName.map { " (provider: \($0))" } ?? "")
+      + (requestID.map { " (request_id: \($0))" } ?? "")
   }
 }
 

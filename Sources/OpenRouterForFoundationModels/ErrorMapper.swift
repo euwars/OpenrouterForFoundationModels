@@ -25,14 +25,21 @@ enum ErrorMapper {
     case 402:
       return OpenRouterError.insufficientCredits(message: error.message)
     case 403:
-      // Moderation flags carry metadata; other 403s are permission errors —
-      // the credential exists but isn't allowed here, so surface the raw
-      // error rather than sending users to key entry.
+      // Moderation flags map to the framework's guardrail error so safety
+      // stops share one catch path with `content_filter` finishes. Other
+      // 403s are permission errors — the credential exists but isn't
+      // allowed here, so surface the raw error rather than sending users
+      // to key entry.
       if let reasons = error.moderationReasons {
-        return OpenRouterError.moderated(
-          reasons: reasons,
-          flaggedInput: error.flaggedInput,
-          provider: error.providerName
+        var metadata: [String: any Sendable] = ["reasons": reasons]
+        if let flagged = error.flaggedInput { metadata["flaggedInput"] = flagged }
+        if let provider = error.providerName { metadata["provider"] = provider }
+        return LanguageModelError.guardrailViolation(
+          .init(
+            debugDescription:
+              "Input flagged by moderation: \(reasons.joined(separator: ", "))",
+            metadata: metadata
+          )
         )
       }
       return OpenRouterError.api(code: error.code, message: error.message)
