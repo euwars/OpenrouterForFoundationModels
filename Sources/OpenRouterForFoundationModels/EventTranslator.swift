@@ -221,39 +221,22 @@ struct EventTranslator: Sendable {
           totalTokenCount: usage.completionTokens ?? 0,
           reasoningTokenCount: usage.completionTokensDetails?.reasoningTokens ?? 0
         )
-        // ServerFoundationModels' updateUsage carries no metadata; tier and
-        // cost still arrive via the updateMetadata sent above.
-        #if ServerFoundationModels
-        await channel.send(
-          .response(
-            entryID: responseEntryID,
-            action: .updateUsage(input: input, output: output)
-          )
-        )
-        #else
         await channel.send(
           .response(
             entryID: responseEntryID,
             action: .updateUsage(input: input, output: output, metadata: metadata)
           )
         )
-        #endif
       }
     }
 
     if !refusalText.isEmpty {
-      #if ServerFoundationModels
-      throw LanguageModelError.refusal(
-        .init(debugDescription: "The model refused to answer: \(refusalText)")
-      )
-      #else
       throw LanguageModelError.refusal(
         .init(
           explanation: refusalText,
           debugDescription: "The model refused to answer."
         )
       )
-      #endif
     }
 
     // Persist accumulated reasoning_details on the reasoning entry. This
