@@ -11,6 +11,23 @@ let package = Package(
   products: [
     .library(name: "OpenRouterForFoundationModels", targets: ["OpenRouterForFoundationModels"])
   ],
+  traits: [
+    // Compile the bridge against ServerFoundationModels — the open-source,
+    // runs-anywhere reimplementation of the FoundationModels surface —
+    // instead of Apple's framework. Off by default: Apple platforms link
+    // the system framework exactly as before. Enable from a consumer with
+    //   .package(url: …, traits: ["ServerFoundationModels"])
+    .trait(
+      name: "ServerFoundationModels",
+      description: "Use euwars/ServerFoundationModels instead of Apple's FoundationModels."
+    )
+  ],
+  dependencies: [
+    .package(
+      url: "https://github.com/euwars/ServerFoundationModels.git",
+      from: "0.1.2"
+    )
+  ],
   targets: [
     // Internal chat-completions API client. No FoundationModels dependency.
     .target(name: "OpenRouterAPI"),
@@ -18,7 +35,14 @@ let package = Package(
     // FoundationModels ↔ OpenRouter chat completions bridge.
     .target(
       name: "OpenRouterForFoundationModels",
-      dependencies: ["OpenRouterAPI"]
+      dependencies: [
+        "OpenRouterAPI",
+        .product(
+          name: "ServerFoundationModels",
+          package: "ServerFoundationModels",
+          condition: .when(traits: ["ServerFoundationModels"])
+        ),
+      ]
     ),
 
     // Runnable usage example (`swift run OpenRouterExample`). Deliberately not

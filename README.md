@@ -30,6 +30,20 @@ Use any [OpenRouter](https://openrouter.ai) model as a server-side language mode
 - Xcode 27 (beta).
 - An [OpenRouter API key](https://openrouter.ai/settings/keys).
 
+### Using ServerFoundationModels instead of Apple's framework
+
+The bridge also compiles against [ServerFoundationModels](https://github.com/euwars/ServerFoundationModels), the open-source reimplementation of the FoundationModels surface, via a package trait — same `OpenRouterLanguageModel`, same sessions and `@Generable` macros:
+
+```swift
+.package(
+  url: "https://github.com/euwars/OpenrouterForFoundationModels.git",
+  branch: "main",
+  traits: ["ServerFoundationModels"]
+)
+```
+
+The trait is off by default (Apple's framework, exactly as documented below). The full test suite passes under both backends.
+
 ## Installation
 
 Add the package to your `Package.swift`:

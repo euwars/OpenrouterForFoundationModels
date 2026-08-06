@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if ServerFoundationModels
+import ServerFoundationModels
+#else
 import FoundationModels
+#endif
 import OpenRouterAPI
 
 /// Translates the chat-completions SSE chunk stream into channel events.
@@ -209,32 +213,47 @@ struct EventTranslator: Sendable {
             .response(entryID: responseEntryID, action: .updateMetadata(metadata))
           )
         }
+        let input = LanguageModelExecutorGenerationChannel.Usage.Input(
+          totalTokenCount: usage.promptTokens ?? 0,
+          cachedTokenCount: usage.promptTokensDetails?.cachedTokens ?? 0
+        )
+        let output = LanguageModelExecutorGenerationChannel.Usage.Output(
+          totalTokenCount: usage.completionTokens ?? 0,
+          reasoningTokenCount: usage.completionTokensDetails?.reasoningTokens ?? 0
+        )
+        // ServerFoundationModels' updateUsage carries no metadata; tier and
+        // cost still arrive via the updateMetadata sent above.
+        #if ServerFoundationModels
         await channel.send(
           .response(
             entryID: responseEntryID,
-            action: .updateUsage(
-              input: .init(
-                totalTokenCount: usage.promptTokens ?? 0,
-                cachedTokenCount: usage.promptTokensDetails?.cachedTokens ?? 0
-              ),
-              output: .init(
-                totalTokenCount: usage.completionTokens ?? 0,
-                reasoningTokenCount: usage.completionTokensDetails?.reasoningTokens ?? 0
-              ),
-              metadata: metadata
-            )
+            action: .updateUsage(input: input, output: output)
           )
         )
+        #else
+        await channel.send(
+          .response(
+            entryID: responseEntryID,
+            action: .updateUsage(input: input, output: output, metadata: metadata)
+          )
+        )
+        #endif
       }
     }
 
     if !refusalText.isEmpty {
+      #if ServerFoundationModels
+      throw LanguageModelError.refusal(
+        .init(debugDescription: "The model refused to answer: \(refusalText)")
+      )
+      #else
       throw LanguageModelError.refusal(
         .init(
           explanation: refusalText,
           debugDescription: "The model refused to answer."
         )
       )
+      #endif
     }
 
     // Persist accumulated reasoning_details on the reasoning entry. This

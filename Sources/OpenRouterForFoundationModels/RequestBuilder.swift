@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if ServerFoundationModels
+import ServerFoundationModels
+#else
 import FoundationModels
+#endif
 import OpenRouterAPI
 
 /// Marks a reasoning entry as carrying OpenRouter `reasoning_details` in its
@@ -94,8 +98,11 @@ enum RequestBuilder {
       case .reasoning(let r):
         // Reasoning text replays as the concatenation it streamed as.
         pendingReasoningText += text(of: r.segments, separator: "")
-        if (r.metadata[reasoningDetailsMetadataKey] as? Bool) == true,
-          let data = r.signature,
+        // The translator stores accumulated reasoning_details as a JSON
+        // array in the entry's signature bytes. Parse directly — the
+        // metadata marker is advisory only, since not every backend
+        // persists channel metadata onto reasoning entries.
+        if let data = r.signature,
           let value = try? JSONDecoder().decode(JSONValue.self, from: data),
           case .array(let details) = value
         {
@@ -221,13 +228,27 @@ enum RequestBuilder {
 
     if let schema = request.schema {
       req.responseFormat = ResponseFormat(
-        name: schema.name,
+        name: schemaName(of: schema),
         strict: true,
         schema: jsonSchema(from: schema, strict: true, fidelity: schemaFidelity)
       )
     }
 
     return req
+  }
+
+  /// The wrapper name for `response_format.json_schema`.
+  private static func schemaName(of schema: GenerationSchema) -> String {
+    #if ServerFoundationModels
+    // ServerFoundationModels doesn't expose the root type name directly;
+    // recover it from the encoded schema's title when present.
+    if case .string(let title)? = JSONValue.encoded(schema)?["title"] {
+      return title
+    }
+    return "response"
+    #else
+    return schema.name
+    #endif
   }
 
   /// True when any schema on the request carries `@Guide` constraint
@@ -619,6 +640,24 @@ enum RequestBuilder {
     to req: inout ChatRequest
   ) {
     req.temperature = options.temperature
+    // The sampling vocabulary is identical; ServerFoundationModels spells
+    // the case names differently.
+    #if ServerFoundationModels
+    switch options.samplingMode?.kind {
+    case .greedy:
+      req.temperature = 0
+    case .top(let k, let seed):
+      req.topK = k
+      req.seed = seed.map { Int(clamping: $0) }
+    case .nucleus(let threshold, let seed):
+      req.topP = threshold
+      req.seed = seed.map { Int(clamping: $0) }
+    case nil:
+      break
+    default:
+      break
+    }
+    #else
     switch options.samplingMode?.kind {
     case .greedy:
       req.temperature = 0
@@ -633,5 +672,6 @@ enum RequestBuilder {
     @unknown default:
       break
     }
+    #endif
   }
 }

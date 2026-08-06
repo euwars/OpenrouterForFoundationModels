@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if ServerFoundationModels
+import ServerFoundationModels
+#else
 import FoundationModels
+#endif
 import OpenRouterAPI
 import Synchronization
 import Testing

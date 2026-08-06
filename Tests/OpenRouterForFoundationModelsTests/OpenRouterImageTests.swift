@@ -2,7 +2,11 @@
 
 import CoreGraphics
 import Foundation
+#if ServerFoundationModels
+import ServerFoundationModels
+#else
 import FoundationModels
+#endif
 import ImageIO
 import Testing
 

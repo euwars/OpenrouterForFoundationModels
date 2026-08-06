@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
+#if ServerFoundationModels
+import ServerFoundationModels
+#else
 import FoundationModels
+#endif
 import Testing
 
 @testable import OpenRouterForFoundationModels
@@ -33,7 +37,9 @@ import Testing
       tools: [InterleaveWeatherTool()]
     )
     let response = try await session.respond(to: "Weather?")
-    #expect(response.content == "72F.")
+    // Apple returns the final round's text; ServerFoundationModels joins
+    // rounds. Both end with the post-tool answer.
+    #expect(response.content.hasSuffix("72F."))
     #expect(reasoningText(in: session.transcript) == "think 1 think 2")
 
     let toolCallEntries = session.transcript.compactMap { entry -> Transcript.ToolCalls? in
