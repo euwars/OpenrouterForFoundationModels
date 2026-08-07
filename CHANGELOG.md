@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 (2026-08-07)
+
+- The module now re-exports the Foundation Models surface it was built
+  against. `import OpenRouterForFoundationModels` alone resolves
+  `LanguageModelSession`, `@Generable`, and the rest, under either trait
+  configuration — previously a consumer had to add the matching import
+  themselves, and which one was correct depended on the trait they set.
+  Existing code that imports the framework explicitly keeps working.
+- Internally, the `ServerFoundationModels` trait is spelled once, in
+  `FoundationModelsExports.swift`, instead of in every source, test, and
+  example file. No behavior change; `Package.swift` is unchanged.
+
 ## 0.1.0 (2026-08-07)
 
 Initial release: OpenRouter as a Foundation Models server-side language model.
