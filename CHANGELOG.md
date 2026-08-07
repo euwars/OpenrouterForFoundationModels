@@ -10,7 +10,11 @@
   Existing code that imports the framework explicitly keeps working.
 - Internally, the `ServerFoundationModels` trait is spelled once, in
   `FoundationModelsExports.swift`, instead of in every source, test, and
-  example file. No behavior change; `Package.swift` is unchanged.
+  example file. No behavior change to the trait or its conditional dependency.
+- Fixed: the ServerFoundationModels dependency floor said `from: "0.6.0"`
+  while the sources had already dropped the 0.6.0 compatibility shims in
+  0.1.0. A consumer resolving 0.6.x would fail to build; the manifest now
+  requires 0.7.0, matching what 0.1.0 documented.
 
 ## 0.1.0 (2026-08-07)
 
