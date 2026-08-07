@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
-#if ServerFoundationModels
-import ServerFoundationModels
-#else
-import FoundationModels
-#endif
 
 /// OpenRouter as a Foundation Models server-side language model.
 ///

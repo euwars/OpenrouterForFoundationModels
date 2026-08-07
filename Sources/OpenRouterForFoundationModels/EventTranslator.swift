@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
-#if ServerFoundationModels
-import ServerFoundationModels
-#else
-import FoundationModels
-#endif
 import OpenRouterAPI
 
 /// Translates the chat-completions SSE chunk stream into channel events.

@@ -56,17 +56,15 @@ dependencies: [
 ]
 ```
 
-Then add `OpenRouterForFoundationModels` to your target's dependencies and import it alongside `FoundationModels`:
+Then add `OpenRouterForFoundationModels` to your target's dependencies and import it. The module re-exports whichever Foundation Models surface it was built against, so one import brings in `LanguageModelSession`, `@Generable`, and the rest — under either trait configuration:
 
 ```swift
-import FoundationModels
 import OpenRouterForFoundationModels
 ```
 
 ## Quick start
 
 ```swift
-import FoundationModels
 import OpenRouterForFoundationModels
 
 let model = OpenRouterLanguageModel(

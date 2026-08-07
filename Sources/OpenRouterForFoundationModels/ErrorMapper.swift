@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
-#if ServerFoundationModels
-import ServerFoundationModels
-#else
-import FoundationModels
-#endif
 import OpenRouterAPI
 
 /// Maps OpenRouter failures onto the framework's typed errors so app

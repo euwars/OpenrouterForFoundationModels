@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import Foundation
-#if ServerFoundationModels
-import ServerFoundationModels
-#else
-import FoundationModels
-#endif
 import OpenRouterAPI
 
 /// Marks a reasoning entry as carrying OpenRouter `reasoning_details` in its
