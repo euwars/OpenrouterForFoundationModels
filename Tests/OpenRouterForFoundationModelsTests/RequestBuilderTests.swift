@@ -525,21 +525,17 @@ import Testing
     #expect(request.toolChoice == nil)
   }
 
-  @Test func `citation segments are not replayed as text`() throws {
+  @Test func `response citations are not replayed as text`() throws {
     let transcript = Transcript(entries: [
       .prompt(.init(segments: [.text(.init(content: "News?"))])),
       .response(
         .init(
-          assetIDs: [],
-          segments: [
-            .text(.init(content: "Big news today.")),
-            .custom(
-              OpenRouterCitationSegment(
-                id: "https://example.com",
-                content: .init(url: "https://example.com", title: "Example")
-              )
-            ),
-          ]
+          metadata: [
+            OpenRouterMetadata.citations: [
+              OpenRouterCitation(url: "https://example.com", title: "Example")
+            ]
+          ],
+          segments: [.text(.init(content: "Big news today."))]
         )
       ),
       .prompt(.init(segments: [.text(.init(content: "More?"))])),

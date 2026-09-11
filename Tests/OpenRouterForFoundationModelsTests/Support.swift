@@ -163,7 +163,7 @@ extension LanguageModelExecutorGenerationRequest {
     schema: GenerationSchema? = nil,
     generationOptions: GenerationOptions = GenerationOptions(),
     contextOptions: ContextOptions = ContextOptions(),
-    metadata: [String: any Sendable & Codable & Equatable] = [:]
+    metadata: [String: any ConvertibleToGeneratedContent] = [:]
   ) -> Self {
     Self(
       id: UUID(),

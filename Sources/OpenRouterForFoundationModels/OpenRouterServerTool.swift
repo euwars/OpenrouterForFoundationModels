@@ -16,8 +16,8 @@ import OpenRouterAPI
 ///
 /// Distinct from the framework's `tools:` array, which holds client-side
 /// tools the framework invokes on the device. The model decides when and how
-/// often to invoke a server tool; results surface as
-/// ``OpenRouterCitationSegment`` custom segments on the response.
+/// often to invoke a server tool; results surface as ``OpenRouterCitation``
+/// values in the response entry's metadata (``OpenRouterMetadata/citations``).
 public struct OpenRouterServerTool: Sendable, Hashable {
   /// Which search backend serves `webSearch`. Omitting it lets OpenRouter
   /// pick (native provider search where available, Exa otherwise).
@@ -63,61 +63,72 @@ public struct OpenRouterServerTool: Sendable, Hashable {
   }
 }
 
-/// A web-search citation attached to the response, surfaced as a custom
-/// segment so apps can render grounded sources:
+/// A web-search citation attached to a response. Citations live in the
+/// response transcript entry's metadata under ``OpenRouterMetadata/citations``
+/// (the Foundation Models SDK 27 release removed custom transcript segments,
+/// which earlier bridge versions used); read them with
+/// ``FoundationModels/Transcript/Response/openRouterCitations``:
 ///
 /// ```swift
 /// for case .response(let response) in session.transcript {
-///   for case .custom(let segment) in response.segments {
-///     if let citation = segment as? OpenRouterCitationSegment {
-///       print(citation.content.title ?? citation.content.url)
-///     }
+///   for citation in response.openRouterCitations {
+///     print(citation.title ?? citation.url)
 ///   }
 /// }
 /// ```
-public struct OpenRouterCitationSegment: Transcript.CustomSegment {
-  public struct Content: Sendable, Codable, Equatable {
-    /// The cited page.
-    public var url: String
-    public var title: String?
-    /// The excerpt the model grounded on.
-    public var excerpt: String?
-    /// Character range in the response text the citation covers, when the
-    /// provider reports one.
-    public var startIndex: Int?
-    public var endIndex: Int?
+public struct OpenRouterCitation: Sendable, Codable, Hashable {
+  /// The cited page.
+  public var url: String
+  public var title: String?
+  /// The excerpt the model grounded on.
+  public var excerpt: String?
+  /// Character range in the response text the citation covers, when the
+  /// provider reports one.
+  public var startIndex: Int?
+  public var endIndex: Int?
 
-    public init(
-      url: String,
-      title: String? = nil,
-      excerpt: String? = nil,
-      startIndex: Int? = nil,
-      endIndex: Int? = nil
-    ) {
-      self.url = url
-      self.title = title
-      self.excerpt = excerpt
-      self.startIndex = startIndex
-      self.endIndex = endIndex
-    }
+  public init(
+    url: String,
+    title: String? = nil,
+    excerpt: String? = nil,
+    startIndex: Int? = nil,
+    endIndex: Int? = nil
+  ) {
+    self.url = url
+    self.title = title
+    self.excerpt = excerpt
+    self.startIndex = startIndex
+    self.endIndex = endIndex
+  }
+}
+
+extension OpenRouterCitation: ConvertibleToGeneratedContent, ConvertibleFromGeneratedContent {
+  public var generatedContent: GeneratedContent {
+    GeneratedContent(properties: [
+      "url": url,
+      "title": title,
+      "excerpt": excerpt,
+      "startIndex": startIndex,
+      "endIndex": endIndex,
+    ])
   }
 
-  public var id: String
-  public var content: Content
-
-  public init(id: String, content: Content) {
-    self.id = id
-    self.content = content
+  public init(_ content: GeneratedContent) throws {
+    self.init(
+      url: try content.value(String.self, forProperty: "url"),
+      title: try content.value(String?.self, forProperty: "title"),
+      excerpt: try content.value(String?.self, forProperty: "excerpt"),
+      startIndex: try content.value(Int?.self, forProperty: "startIndex"),
+      endIndex: try content.value(Int?.self, forProperty: "endIndex")
+    )
   }
+}
 
-  public var description: String {
-    if let title = content.title, !title.isEmpty {
-      "[\(title)](\(content.url))"
-    } else {
-      content.url
-    }
+extension Transcript.Response {
+  /// Web-search citations the model attached to this response, in the order
+  /// the provider reported them (one per URL). Empty when there were none.
+  public var openRouterCitations: [OpenRouterCitation] {
+    guard let content = metadata[OpenRouterMetadata.citations] else { return [] }
+    return (try? content.value([OpenRouterCitation].self)) ?? []
   }
-
-  public var promptRepresentation: Prompt { Prompt(description) }
-  public var instructionsRepresentation: Instructions { Instructions(description) }
 }

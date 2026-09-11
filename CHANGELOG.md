@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 (2026-09-11)
+
+Xcode 27.0 GM alignment. The Foundation Models SDK 27 release removed custom
+transcript segments and moved entry metadata to `GeneratedContent`; the bridge
+now builds against the GM in both trait configurations.
+
+- **Breaking:** web-search citations are no longer `OpenRouterCitationSegment`
+  custom segments. They live on the response entry's metadata under
+  `OpenRouterMetadata.citations` as `[OpenRouterCitation]`; read them with
+  `Transcript.Response.openRouterCitations`. Same fields as before (URL,
+  title, excerpt, character range), now also round-tripped by `Transcript`'s
+  Codable encoding.
+- Request metadata (`OpenRouterMetadata.user`, `.sessionID`) and response
+  metadata (`.servedTier`, `.cost`) follow the SDK's `GeneratedContent`
+  values; readers compare against `GeneratedContent("…")` or call `value(_:)`.
+- Requires ServerFoundationModels 0.8.0 (the matching GM alignment) under the
+  `ServerFoundationModels` trait.
+
 ## 0.2.0 (2026-08-07)
 
 - The module now re-exports the Foundation Models surface it was built

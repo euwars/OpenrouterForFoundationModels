@@ -24,6 +24,10 @@ public enum OpenRouterMetadata {
   /// Key on the response transcript entry's metadata carrying the credits
   /// charged for the generation.
   public static let cost = "openrouter.cost"
+  /// Key on the response transcript entry's metadata carrying the web-search
+  /// citations (`[OpenRouterCitation]`) attached to the response. Prefer
+  /// `Transcript.Response.openRouterCitations`.
+  public static let citations = "openrouter.citations"
 }
 
 /// Pure translation: framework request → chat completions request body.
@@ -205,9 +209,9 @@ enum RequestBuilder {
       ),
       provider: wireProvider(configuration.provider, requireParameters: isStructured),
       transforms: configuration.transforms.isEmpty ? nil : configuration.transforms,
-      user: request.metadata[OpenRouterMetadata.user] as? String,
+      user: request.metadata[OpenRouterMetadata.user].flatMap { try? $0.value(String.self) },
       serviceTier: configuration.serviceTier?.rawValue,
-      sessionID: request.metadata[OpenRouterMetadata.sessionID] as? String
+      sessionID: request.metadata[OpenRouterMetadata.sessionID].flatMap { try? $0.value(String.self) }
         ?? configuration.sessionID,
       stream: true
     )
@@ -530,7 +534,7 @@ enum RequestBuilder {
       switch $0 {
       case .text(let t): t.content
       case .structure(let s): s.content.jsonString
-      case .attachment, .custom: nil
+      case .attachment: nil
       @unknown default: nil
       }
     }
@@ -558,12 +562,6 @@ enum RequestBuilder {
             )
           )
         }
-      case .custom(let custom):
-        // Citations are display data attached to a past response; replaying
-        // them as text would corrupt the assistant's recorded words.
-        if custom is OpenRouterCitationSegment { return nil }
-        let text = String(describing: custom)
-        return text.isEmpty ? nil : .text(text)
       @unknown default:
         return nil
       }

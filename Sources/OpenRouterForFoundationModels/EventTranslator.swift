@@ -82,6 +82,8 @@ struct EventTranslator: Sendable {
     // builder can replay them verbatim on later turns — models with signed
     // or encrypted reasoning require the blocks back unmodified.
     var details = ReasoningDetailAccumulator()
+    // Web-search citations for the response, one per URL, in arrival order.
+    var citations: [OpenRouterCitation] = []
 
     // The tier that actually served the request, when reported. Carried
     // into usage metadata so apps can verify flex/priority billing.
@@ -134,12 +136,22 @@ struct EventTranslator: Sendable {
         }
 
         if let annotations = delta.annotations {
+          var changed = false
           for annotation in annotations {
-            guard let segment = Self.citationSegment(from: annotation) else { continue }
+            guard let citation = Self.citation(from: annotation) else { continue }
+            if let index = citations.firstIndex(where: { $0.url == citation.url }) {
+              citations[index] = citation
+            } else {
+              citations.append(citation)
+            }
+            changed = true
+          }
+          if changed {
+            // Metadata updates replace the key, so the full list goes each time.
             await channel.send(
               .response(
                 entryID: responseEntryID,
-                action: .updateCustomSegment(segment)
+                action: .updateMetadata([OpenRouterMetadata.citations: citations])
               )
             )
           }
@@ -193,7 +205,7 @@ struct EventTranslator: Sendable {
       // Usage arrives on the final chunk. Send AFTER content so the
       // authoritative cumulative totals overwrite the per-delta placeholders.
       if let usage = chunk.usage {
-        var metadata: [String: any Sendable & Codable & Equatable] = [:]
+        var metadata: [String: any ConvertibleToGeneratedContent] = [:]
         if let cost = usage.cost {
           metadata[OpenRouterMetadata.cost] = cost
         }
@@ -304,24 +316,21 @@ final class RecordingChannelSink: GenerationEventSink {
 }
 
 extension EventTranslator {
-  /// `{"type": "url_citation", "url_citation": {...}}` → citation segment.
-  /// The URL doubles as the segment ID, so a citation repeated across deltas
-  /// updates one segment instead of accumulating duplicates.
-  static func citationSegment(from annotation: JSONValue) -> OpenRouterCitationSegment? {
+  /// `{"type": "url_citation", "url_citation": {...}}` → citation. The URL
+  /// identifies it, so a citation repeated across deltas updates one entry
+  /// instead of accumulating duplicates.
+  static func citation(from annotation: JSONValue) -> OpenRouterCitation? {
     guard
       annotation["type"]?.stringValue == "url_citation",
       let citation = annotation["url_citation"],
       let url = citation["url"]?.stringValue
     else { return nil }
-    return OpenRouterCitationSegment(
-      id: url,
-      content: .init(
-        url: url,
-        title: citation["title"]?.stringValue,
-        excerpt: citation["content"]?.stringValue,
-        startIndex: citation["start_index"]?.intValue,
-        endIndex: citation["end_index"]?.intValue
-      )
+    return OpenRouterCitation(
+      url: url,
+      title: citation["title"]?.stringValue,
+      excerpt: citation["content"]?.stringValue,
+      startIndex: citation["start_index"]?.intValue,
+      endIndex: citation["end_index"]?.intValue
     )
   }
 }

@@ -48,8 +48,8 @@ import Testing
         return nil
       }.last
     )
-    #expect(response.metadata[OpenRouterMetadata.servedTier] as? String == "flex")
-    #expect(response.metadata[OpenRouterMetadata.cost] as? Double == 0.0012)
+    #expect(response.metadata[OpenRouterMetadata.servedTier] == GeneratedContent("flex"))
+    #expect(response.metadata[OpenRouterMetadata.cost] == GeneratedContent(0.0012))
   }
 
   @Test func `request carries auth, attribution, and endpoint path`() async throws {
@@ -176,7 +176,7 @@ import Testing
     }
   }
 
-  @Test func `web search annotations surface as citation segments`() async throws {
+  @Test func `web search annotations surface as response citations`() async throws {
     let payloads = [
       #"{"id":"gen-1","choices":[{"delta":{"content":"Big news. "}}]}"#,
       #"{"id":"gen-1","choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a","title":"Example A","content":"excerpt","start_index":0,"end_index":8}}]}}]}"#,
@@ -188,19 +188,16 @@ import Testing
     let response = try await session.respond(to: "News?")
     #expect(response.content.contains("Big news."))
 
-    let citations = session.transcript
-      .flatMap { entry -> [Transcript.Segment] in
-        if case .response(let r) = entry { return r.segments }
-        return []
-      }
-      .compactMap { segment -> OpenRouterCitationSegment? in
-        if case .custom(let custom) = segment { return custom as? OpenRouterCitationSegment }
-        return nil
-      }
+    let citations = session.transcript.flatMap { entry -> [OpenRouterCitation] in
+      if case .response(let r) = entry { return r.openRouterCitations }
+      return []
+    }
     #expect(citations.count == 1)
-    #expect(citations.first?.content.url == "https://example.com/a")
-    #expect(citations.first?.content.title == "Example A")
-    #expect(citations.first?.content.excerpt == "excerpt")
+    #expect(citations.first?.url == "https://example.com/a")
+    #expect(citations.first?.title == "Example A")
+    #expect(citations.first?.excerpt == "excerpt")
+    #expect(citations.first?.startIndex == 0)
+    #expect(citations.first?.endIndex == 8)
   }
 
   @Test func `metadata user key flows to the wire`() throws {

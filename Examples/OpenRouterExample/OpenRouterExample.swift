@@ -182,21 +182,14 @@ struct OpenRouterExample {
       }
       print()
 
-      let citations = session.transcript
-        .flatMap { entry -> [Transcript.Segment] in
-          if case .response(let response) = entry { return response.segments }
-          return []
-        }
-        .compactMap { segment -> OpenRouterCitationSegment? in
-          if case .custom(let custom) = segment {
-            return custom as? OpenRouterCitationSegment
-          }
-          return nil
-        }
+      let citations = session.transcript.flatMap { entry -> [OpenRouterCitation] in
+        if case .response(let response) = entry { return response.openRouterCitations }
+        return []
+      }
       if !citations.isEmpty {
         print("\nSources:")
         for citation in citations {
-          print("  • \(citation.content.title ?? citation.content.url) — \(citation.content.url)")
+          print("  • \(citation.title ?? citation.url) — \(citation.url)")
         }
       }
 

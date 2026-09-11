@@ -37,7 +37,7 @@ The bridge also compiles against [ServerFoundationModels](https://github.com/euw
 ```swift
 .package(
   url: "https://github.com/euwars/OpenrouterForFoundationModels.git",
-  from: "0.2.0",
+  from: "0.3.0",
   traits: ["ServerFoundationModels"]
 )
 ```
@@ -52,7 +52,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.2.0")
+  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.3.0")
 ]
 ```
 
@@ -211,14 +211,12 @@ let model = OpenRouterLanguageModel(
 )
 ```
 
-Citations surface on the transcript as ``OpenRouterCitationSegment`` custom segments (URL, title, excerpt), ready for grounded-source UI:
+Citations surface on the response transcript entry's metadata as `OpenRouterCitation` values (URL, title, excerpt, character range), ready for grounded-source UI:
 
 ```swift
 for case .response(let response) in session.transcript {
-  for case .custom(let segment) in response.segments {
-    if let citation = segment as? OpenRouterCitationSegment {
-      print(citation.content.title ?? citation.content.url)
-    }
+  for citation in response.openRouterCitations {
+    print(citation.title ?? citation.url)
   }
 }
 ```
@@ -312,7 +310,7 @@ Mid-stream provider failures (which arrive over HTTP 200) also fail the turn wit
 
 ## What this package provides
 
-The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `OpenRouterLanguageModel`, `OpenRouterModel`, `AuthMode`, `ReasoningPolicy`, `ProviderPreferences`, `OpenRouterServerTool`, `OpenRouterCitationSegment`, `Attribution`, `CachePolicy`, `ServiceTier`, `OpenRouterMetadata`, and `OpenRouterError` — plus per-model knobs like `structuredOutputRetries` and `sessionID`. It is not a general-purpose OpenRouter API client.
+The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `OpenRouterLanguageModel`, `OpenRouterModel`, `AuthMode`, `ReasoningPolicy`, `ProviderPreferences`, `OpenRouterServerTool`, `OpenRouterCitation`, `Attribution`, `CachePolicy`, `ServiceTier`, `OpenRouterMetadata`, and `OpenRouterError` — plus per-model knobs like `structuredOutputRetries` and `sessionID`. It is not a general-purpose OpenRouter API client.
 
 ## License
 
