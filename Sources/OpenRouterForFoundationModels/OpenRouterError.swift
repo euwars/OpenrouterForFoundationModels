@@ -25,6 +25,14 @@ public enum OpenRouterError: LocalizedError, Sendable {
   case providerFailure(message: String)
   /// Any other OpenRouter error, carrying the wire code and message.
   case api(code: Int, message: String)
+  /// A decision model's response cannot answer a question as asked: an
+  /// answer is missing, has another type, or names a choice option that
+  /// was not offered. The message quotes the question's instructions.
+  case unexpectedAnswer(message: String)
+  /// A decision request was rejected before it was sent: an image that is
+  /// not PNG, JPEG, or WebP, a choice with no options, or a score with no
+  /// levels.
+  case invalidDecisionRequest(message: String)
 
   public var errorDescription: String? {
     switch self {
@@ -40,6 +48,10 @@ public enum OpenRouterError: LocalizedError, Sendable {
       "Model provider unavailable: \(message)"
     case .api(let code, let message):
       "OpenRouter error \(code): \(message)"
+    case .unexpectedAnswer(let message):
+      "Unexpected decision answer: \(message)"
+    case .invalidDecisionRequest(let message):
+      "Invalid decision request: \(message)"
     }
   }
 }

@@ -66,6 +66,22 @@ struct OpenRouterImage: Sendable, Hashable {
     self.data = try Self.encodeJPEG(fitted)
   }
 
+  /// Decodes encoded image bytes, reading their EXIF orientation, then
+  /// normalizes exactly like ``init(cgImage:orientation:)``.
+  init(encoded data: Data) throws {
+    guard
+      let source = CGImageSourceCreateWithData(data as CFData, nil),
+      let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+    else {
+      throw Error.encodingFailed
+    }
+    let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    let orientation =
+      (properties?[kCGImagePropertyOrientation] as? UInt32)
+      .flatMap(CGImagePropertyOrientation.init(rawValue:)) ?? .up
+    try self.init(cgImage: image, orientation: orientation)
+  }
+
   /// The wire-ready `image_url` value.
   var dataURL: String {
     "data:image/jpeg;base64,\(data.base64EncodedString())"

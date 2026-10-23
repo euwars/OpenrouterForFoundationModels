@@ -424,7 +424,7 @@ enum RequestBuilder {
   /// the caller didn't decide, `require_parameters` turns on so routing only
   /// considers endpoints that enforce `response_format` — a schema silently
   /// ignored upstream would surface as an undecodable response.
-  private static func wireProvider(
+  static func wireProvider(
     _ preferences: OpenRouterForFoundationModels.ProviderPreferences?,
     requireParameters: Bool
   ) -> OpenRouterAPI.ProviderPreferences? {
@@ -599,12 +599,14 @@ enum RequestBuilder {
         )
       )
     }
-    return "data:\(sniffedMediaType(of: data));base64,\(data.base64EncodedString())"
+    let mediaType = sniffedMediaType(of: data) ?? "image/jpeg"
+    return "data:\(mediaType);base64,\(data.base64EncodedString())"
     #endif
   }
 
-  /// Magic-byte media-type detection for raw image bytes.
-  static func sniffedMediaType(of data: Data) -> String {
+  /// Magic-byte media-type detection for raw image bytes. `nil` when the
+  /// bytes match no known image format.
+  static func sniffedMediaType(of data: Data) -> String? {
     let prefix = [UInt8](data.prefix(12))
     if prefix.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
     if prefix.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "image/png" }
@@ -614,7 +616,7 @@ enum RequestBuilder {
     {
       return "image/webp"
     }
-    return "image/jpeg"
+    return nil
   }
 
   private static func toolDefinition(
