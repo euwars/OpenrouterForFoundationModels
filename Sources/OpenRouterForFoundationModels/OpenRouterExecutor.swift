@@ -127,16 +127,11 @@ public struct OpenRouterExecutor: LanguageModelExecutor {
   /// network. The wire-auth mapping and client construction still run here.
   init(configuration: Configuration, transport: any HTTPTransport) {
     self.configuration = configuration
-
-    let auth: OpenRouterAPI.Configuration.Auth
-    switch configuration.authMode {
-    case .apiKey(let key) where !key.isEmpty:
-      auth = .bearer(key)
-    case .apiKey, .proxied:
-      auth = .none
-    }
     self.client = OpenRouterClient(
-      configuration: .init(auth: auth, baseURL: configuration.baseURL),
+      configuration: .init(
+        auth: configuration.authMode.clientAuth,
+        baseURL: configuration.baseURL
+      ),
       transport: transport
     )
   }
@@ -149,7 +144,9 @@ public struct OpenRouterExecutor: LanguageModelExecutor {
     streamingInto channel: LanguageModelExecutorGenerationChannel
   ) async throws {
     do {
-      let headers = try perRequestHeaders()
+      let headers = try configuration.authMode.requestHeaders(
+        attribution: configuration.attribution
+      )
       let retries = request.schema == nil ? 0 : max(0, configuration.structuredOutputRetries)
 
       guard retries > 0 else {
@@ -255,27 +252,5 @@ public struct OpenRouterExecutor: LanguageModelExecutor {
       into: sink,
       onFirstChannelWrite: onFirstChannelWrite
     )
-  }
-
-  /// Headers merged over the client's defaults: proxy authorization under
-  /// `.proxied`, plus OpenRouter app attribution. `.apiKey` rides on the
-  /// client configuration; this only enforces that a key was provided.
-  private func perRequestHeaders() throws -> [String: String] {
-    var headers: [String: String] = [:]
-    switch configuration.authMode {
-    case .apiKey(let key):
-      guard !key.isEmpty else { throw OpenRouterError.missingCredential }
-    case .proxied(let proxyHeaders):
-      headers.merge(proxyHeaders) { _, proxy in proxy }
-    }
-    if let attribution = configuration.attribution {
-      if let url = attribution.siteURL {
-        headers["HTTP-Referer"] = url.absoluteString
-      }
-      if let name = attribution.appName {
-        headers["X-Title"] = name
-      }
-    }
-    return headers
   }
 }
