@@ -29,7 +29,8 @@ let package = Package(
     )
   ],
   targets: [
-    // Internal chat-completions API client. No FoundationModels dependency.
+    // Internal OpenRouter API client (chat completions and decisions). No
+    // FoundationModels dependency.
     .target(name: "OpenRouterAPI"),
 
     // FoundationModels ↔ OpenRouter chat completions bridge.

@@ -19,6 +19,7 @@ Use any [OpenRouter](https://openrouter.ai) model as a server-side language mode
 - [Prompt caching](#prompt-caching)
 - [Service tiers](#service-tiers)
 - [Provider routing and fallbacks](#provider-routing-and-fallbacks)
+- [Decision models](#decision-models)
 - [App attribution](#app-attribution)
 - [Error handling](#error-handling)
 - [What this package provides](#what-this-package-provides)
@@ -37,7 +38,7 @@ The bridge also compiles against [ServerFoundationModels](https://github.com/euw
 ```swift
 .package(
   url: "https://github.com/euwars/OpenrouterForFoundationModels.git",
-  from: "0.3.0",
+  from: "0.4.0",
   traits: ["ServerFoundationModels"]
 )
 ```
@@ -52,7 +53,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.3.0")
+  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.4.0")
 ]
 ```
 
@@ -276,6 +277,72 @@ OpenRouterLanguageModel(
 )
 ```
 
+## Decision models
+
+OpenRouter's decision models (Perplexity Decider, TypeSafe Jev, Cloudflare Clef, and the rest of the models whose output modality is `decisions`) judge state against typed questions and return probabilities. They produce no text, so they don't run in a `LanguageModelSession`. Use `OpenRouterDecisionModel` instead. It takes the same `auth`, `provider`, `attribution`, `sessionID`, `baseURL`, and `timeout` options as `OpenRouterLanguageModel` and calls OpenRouter's Decisions endpoint, `alpha/decisions`.
+
+```swift
+enum Team: String, CaseIterable { case account, frontend, payments }
+
+let model = OpenRouterDecisionModel(
+  name: "perplexity/pplx-decider-flash-v1.2",
+  auth: .apiKey(key)
+)
+
+let (isBug, team, urgency) = try await model.decide(
+  about: .json(ticket),
+  .noul("Is the customer reporting a software defect?"),
+  .choice("Which team should own this ticket?", among: Team.allCases),
+  .score(
+    "How urgent is this ticket?",
+    levels: ["Can wait for the next release", "Should be fixed this week", "Blocking revenue right now"]
+  )
+).answers
+
+// isBug: Double, team: ChoiceAnswer<Team>, urgency: ScoreAnswer
+if isBug > 0.8, team.choice == .payments, urgency.score > 1.5 { page(oncall) }
+```
+
+`decide(about:_:)` sends every question in one request and returns the answers in the order you asked them, each typed by its question. A single question returns its answer directly instead of a tuple. Each factory fixes the answer type:
+
+| Question | Answer |
+| --- | --- |
+| `.noul(_:)`, or `.noul(_:yes:no:)` with what each outcome means | `Double`, the probability of yes |
+| `.choice(_:among:)` over a `String`-backed enum or plain strings | `ChoiceAnswer` with `choice`, `confidence`, and `probabilities` per option |
+| `.score(_:levels:)` with levels ordered lowest first | `ScoreAnswer` with `score` on the level index scale (`0` to `levels.count - 1`) and `probabilities` per level |
+| `.box(_:)`, which only `typesafe/jev-1.14` answers | `BoxAnswer` with edges as fractions of the image size, from the top-left corner |
+| `.all(_:)` over a list of questions built at runtime | an array of their answers, in order |
+
+To give guidance for each choice option, pass a dictionary. A `nil` value offers the option without guidance. Write the enum type on each key (`Team.account`) when the question is inline in `decide`, because Swift 6.2 can't infer `.account` there:
+
+```swift
+let gate = try await model.decide(
+  about: .json(proposedCall),
+  .choice(
+    "Should this tool call run?",
+    among: [
+      Verdict.run: "The call does what the user asked and is reversible.",
+      Verdict.refuse: "The call does something the user did not ask for.",
+      Verdict.ask: nil,
+    ]
+  )
+)
+print(gate.answers.choice, gate.servedModel, gate.cost ?? 0)
+```
+
+State is a string literal or `.text(_:)`, an `Encodable` value through `.json(_:)` (encoded with ISO 8601 dates), an image through `.image(_:)`, or an array that mixes them. Wrap an interpolated string in `.text(_:)`. Images must be PNG, JPEG, or WebP bytes. Other bytes, GIF included, throw `OpenRouterError.invalidDecisionRequest` before any request goes out. On Apple platforms the bridge normalizes images the same way it normalizes chat attachments: upright, at most 1568 px on the long edge, re-encoded as JPEG without metadata. On Linux the bytes go out as given.
+
+```swift
+let (matches, tagged) = try await model.decide(
+  about: [.text("Listing title: \(listing.title)"), .image(photoData)],
+  .noul("The photo shows the item in the title."),
+  .all(listing.tags.map { .noul("The photo shows something \($0).") })
+).answers
+// tagged: [Double], aligned with listing.tags
+```
+
+Besides `answers`, a `Decision` carries `servedModel`, `provider`, `id`, `inputTokens`, `outputTokens`, and `cost` in USD.
+
 ## App attribution
 
 Identify the app on OpenRouter rankings and analytics (`HTTP-Referer` / `X-Title`):
@@ -308,9 +375,11 @@ do {
 
 Mid-stream provider failures (which arrive over HTTP 200) also fail the turn with a typed error.
 
+A failed decision request throws the same error as a chat request with the same HTTP status. Decision models add two `OpenRouterError` cases of their own. `invalidDecisionRequest` means the bridge refused to send the request: an image that isn't PNG, JPEG, or WebP, a choice with no options, or a score with no levels. `unexpectedAnswer` means the response can't answer a question as asked, for example a missing answer or a choice option you didn't offer. Its message quotes the question.
+
 ## What this package provides
 
-The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `OpenRouterLanguageModel`, `OpenRouterModel`, `AuthMode`, `ReasoningPolicy`, `ProviderPreferences`, `OpenRouterServerTool`, `OpenRouterCitation`, `Attribution`, `CachePolicy`, `ServiceTier`, `OpenRouterMetadata`, and `OpenRouterError` — plus per-model knobs like `structuredOutputRetries` and `sessionID`. It is not a general-purpose OpenRouter API client.
+The public surface is Apple's Foundation Models provider conformance plus the configuration types that reach it — `OpenRouterLanguageModel`, `OpenRouterModel`, `AuthMode`, `ReasoningPolicy`, `ProviderPreferences`, `OpenRouterServerTool`, `OpenRouterCitation`, `Attribution`, `CachePolicy`, `ServiceTier`, `OpenRouterMetadata`, and `OpenRouterError` — plus per-model knobs like `structuredOutputRetries` and `sessionID`. Decision models add `OpenRouterDecisionModel`, `DecisionState`, `DecisionQuestion`, `Decision`, `ChoiceAnswer`, `ScoreAnswer`, and `BoxAnswer`. It is not a general-purpose OpenRouter API client.
 
 ## License
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 (2026-10-23)
+
+Native support for OpenRouter's decision models (Perplexity Decider, TypeSafe
+Jev, Cloudflare Clef, and the rest of the `output_modalities=decisions`
+catalog).
+
+- `OpenRouterDecisionModel` calls the Decisions endpoint (`alpha/decisions`)
+  with the same `auth`, `provider`, `attribution`, `sessionID`, `baseURL`, and
+  `timeout` options as `OpenRouterLanguageModel`. `decide(about:_:)` takes
+  state and typed questions (`.noul`, `.choice`, `.score`, `.box`, `.all`) and
+  returns each answer typed by its question, in the order asked. Decision
+  models are not a `LanguageModel` and don't run in a `LanguageModelSession`.
+- State images must be PNG, JPEG, or WebP. On Apple platforms they get the
+  same normalization as chat attachments; on Linux they go out as given.
+- **Breaking:** `OpenRouterError` gains `unexpectedAnswer(message:)` and
+  `invalidDecisionRequest(message:)`. An exhaustive `switch` over
+  `OpenRouterError` without a `default` no longer compiles until it handles
+  them.
+- HTTP failures from decision requests map to the same errors as chat
+  (`OpenRouterError` for 401, 402, 502, and 503; `LanguageModelError` for 408,
+  413, and 429).
+
 ## 0.3.0 (2026-09-11)
 
 Xcode 27.0 GM alignment. The Foundation Models SDK 27 release removed custom
