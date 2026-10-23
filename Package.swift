@@ -1,6 +1,17 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
+// The manifest runs on the build host. Where Apple's framework cannot exist
+// the dependency is unconditional; elsewhere only the trait pulls it in.
+#if os(Linux) || os(Android) || os(Windows)
+let serverFoundationModels: Target.Dependency = .product(
+  name: "ServerFoundationModels", package: "ServerFoundationModels")
+#else
+let serverFoundationModels: Target.Dependency = .product(
+  name: "ServerFoundationModels", package: "ServerFoundationModels",
+  condition: .when(traits: ["ServerFoundationModels"]))
+#endif
+
 let package = Package(
   name: "OpenRouterForFoundationModels",
   // Every OS where Foundation Models supports server-side language models.
@@ -38,11 +49,7 @@ let package = Package(
       name: "OpenRouterForFoundationModels",
       dependencies: [
         "OpenRouterAPI",
-        .product(
-          name: "ServerFoundationModels",
-          package: "ServerFoundationModels",
-          condition: .when(traits: ["ServerFoundationModels"])
-        ),
+        serverFoundationModels,
       ]
     ),
 

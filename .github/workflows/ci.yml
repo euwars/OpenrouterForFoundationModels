@@ -6,16 +6,19 @@ on:
   pull_request:
 
 jobs:
-  # Linux compatibility is load-bearing for the ServerFoundationModels
-  # backend — this job is the systematic guarantee it stays true.
+  # On Linux the manifest selects the ServerFoundationModels backend with no
+  # trait. This job is the systematic guarantee that default stays green, and
+  # that forcing the trait there is harmless.
   linux:
     runs-on: ubuntu-latest
     container: swift:6.2
     steps:
       - uses: actions/checkout@v4
-      - name: Build (ServerFoundationModels backend)
-        run: swift build --traits ServerFoundationModels --build-tests
+      - name: Build (ServerFoundationModels backend, selected by platform)
+        run: swift build --build-tests
       - name: Test (offline suites; live suites self-gate on OPENROUTER_API_KEY)
+        run: swift test
+      - name: Test with the trait forced (must be a no-op on Linux)
         run: swift test --traits ServerFoundationModels
 
   # The Apple-framework configuration needs an Xcode 27 (OS 27 SDK) host.

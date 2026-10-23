@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 (2026-10-23)
+
+The framework is chosen by platform. The bridge compiles against Apple's
+FoundationModels on Apple platforms and against ServerFoundationModels on
+Linux, with no trait required. The `ServerFoundationModels` trait remains as a
+force override for Apple platforms (parity testing on a Mac, apps that import
+`ServerFoundationModels` directly, cross-compilation).
+
+- A consumer that previously enabled the trait only to build on Linux can drop
+  it. A consumer whose app imports `ServerFoundationModels` directly on a Mac
+  must keep it, or the bridge's types no longer match the app's.
+- The `User-Agent` SDK version now tracks the package version (it had stayed at
+  0.1.0).
+- No source changes to the bridge's behavior. The same test suites pass under
+  both frameworks on macOS and under ServerFoundationModels on Linux.
+
 ## 0.4.0 (2026-10-23)
 
 Native support for OpenRouter's decision models (Perplexity Decider, TypeSafe

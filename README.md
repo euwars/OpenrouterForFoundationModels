@@ -31,19 +31,47 @@ Use any [OpenRouter](https://openrouter.ai) model as a server-side language mode
 - Xcode 27 (beta).
 - An [OpenRouter API key](https://openrouter.ai/settings/keys).
 
-### Using ServerFoundationModels instead of Apple's framework
+### Which framework the bridge compiles against
 
-The bridge also compiles against [ServerFoundationModels](https://github.com/euwars/ServerFoundationModels), the open-source reimplementation of the FoundationModels surface, via a package trait — same `OpenRouterLanguageModel`, same sessions and `@Generable` macros:
+The bridge compiles against Apple's FoundationModels wherever that framework exists (macOS, iOS, visionOS, watchOS) and against [ServerFoundationModels](https://github.com/euwars/ServerFoundationModels), the open-source reimplementation of the same surface, everywhere else (Linux). The choice is made by the build platform, so one dependency line serves an app that ships on Apple devices and runs on a Linux server:
 
 ```swift
 .package(
   url: "https://github.com/euwars/OpenrouterForFoundationModels.git",
-  from: "0.4.0",
+  from: "0.5.0"
+)
+```
+
+The bridge's public types are stated in the framework's vocabulary, so your app must compile against the same framework the bridge did. Import the one that matches the platform the same way, through a single re-export file in your app:
+
+```swift
+#if canImport(FoundationModels)
+@_exported import FoundationModels
+#else
+@_exported import ServerFoundationModels
+#endif
+```
+
+and make your own ServerFoundationModels dependency conditional on the platforms that need it:
+
+```swift
+.product(name: "ServerFoundationModels", package: "ServerFoundationModels",
+         condition: .when(platforms: [.linux]))
+```
+
+On a Mac this leaves ServerFoundationModels out of the build entirely, so Instruments, the on-device model, and Apple's Foundation Models tooling see your app exactly as they would any other.
+
+To force ServerFoundationModels on an Apple platform too, for example to run the parity suite on a Mac or because your app imports `ServerFoundationModels` directly, enable the `ServerFoundationModels` trait:
+
+```swift
+.package(
+  url: "https://github.com/euwars/OpenrouterForFoundationModels.git",
+  from: "0.5.0",
   traits: ["ServerFoundationModels"]
 )
 ```
 
-The trait is off by default (Apple's framework, exactly as documented below). The full test suite passes under both backends, including on Linux (`swift:6.2` container — verified in CI on every push).
+The trait is also the right tool when cross-compiling from a Mac to Linux, because the platform choice is made where the manifest is evaluated. The full test suite passes under both backends, including on Linux (`swift:6.2` container, verified in CI on every push).
 
 Linux notes: images attach as raw bytes and inline with a sniffed media type (no CoreGraphics normalization), retry logs go to stderr instead of `os.Logger`, and SSE responses arrive whole rather than incrementally — corelibs-foundation's `URLSession` has no byte-streaming API, so partial snapshots deliver at once when the response completes.
 
@@ -53,7 +81,7 @@ Add the package to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.4.0")
+  .package(url: "https://github.com/euwars/OpenrouterForFoundationModels.git", from: "0.5.0")
 ]
 ```
 
