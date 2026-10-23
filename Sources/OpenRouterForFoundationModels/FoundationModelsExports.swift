@@ -10,7 +10,7 @@
 // conforms to `LanguageModel`, callers drive it with `LanguageModelSession`),
 // so a consumer would otherwise have to write the matching import themselves
 // and get it right for whichever trait configuration they built with.
-#if ServerFoundationModels
+#if ServerFoundationModels || !canImport(FoundationModels)
 @_exported import ServerFoundationModels
 #else
 @_exported import FoundationModels
