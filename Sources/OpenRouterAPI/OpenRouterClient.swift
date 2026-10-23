@@ -5,7 +5,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// Thin HTTP client for `POST {baseURL}/v1/chat/completions`.
+/// Thin HTTP client for OpenRouter's chat completions and Decisions endpoints.
 package struct OpenRouterClient: Sendable {
   package let configuration: Configuration
   private let transport: any HTTPTransport
@@ -33,9 +33,30 @@ package struct OpenRouterClient: Sendable {
   ) async throws -> ChatResponse {
     var req = request
     req.stream = false
-    let (data, response) = try await transport.data(for: urlRequest(for: req, headers: headers))
+    let (data, response) = try await transport.data(
+      for: urlRequest(.chatCompletions, body: req, headers: headers)
+    )
     try Self.check(response, body: data)
     return try JSONDecoder().decode(ChatResponse.self, from: data)
+  }
+
+  // MARK: - Decisions
+
+  /// `POST {apiRoot}/alpha/decisions`. Plain JSON both ways, no SSE.
+  ///
+  /// - Parameter timeout: Set on the `URLRequest`, so a caller on a shared
+  ///   session still gets its own bound. `nil` keeps the session's.
+  package func decide(
+    _ request: DecisionsRequest,
+    headers: [String: String] = [:],
+    timeout: TimeInterval? = nil
+  ) async throws -> DecisionsResponse {
+    var urlRequest = try urlRequest(.decisions, body: request, headers: headers)
+    urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+    if let timeout { urlRequest.timeoutInterval = timeout }
+    let (data, response) = try await transport.data(for: urlRequest)
+    try Self.check(response, body: data)
+    return try JSONDecoder().decode(DecisionsResponse.self, from: data)
   }
 
   // MARK: - Streaming
@@ -52,7 +73,7 @@ package struct OpenRouterClient: Sendable {
           var req = request
           req.stream = true
           let (bytes, response) = try await transport.bytes(
-            for: urlRequest(for: req, headers: headers)
+            for: urlRequest(.chatCompletions, body: req, headers: headers)
           )
           if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             // Error responses arrive as a JSON body, not SSE.
@@ -74,23 +95,34 @@ package struct OpenRouterClient: Sendable {
 
   // MARK: - Request building
 
-  /// The chat-completions endpoint for `baseURL`. Accepts both base-URL
-  /// conventions: a host root (`https://openrouter.ai/api`) gets
-  /// `v1/chat/completions` appended, while a URL already ending in the
-  /// OpenAI-style `/v1` (`https://openrouter.ai/api/v1` — what every
-  /// OpenAI-compatible SDK uses) gets only `chat/completions`.
-  package static func endpoint(for baseURL: URL) -> URL {
+  package enum Endpoint: Sendable {
+    /// `{apiRoot}/v1/chat/completions`
+    case chatCompletions
+    /// `{apiRoot}/alpha/decisions`. Decisions live beside `v1`, not in it.
+    case decisions
+  }
+
+  /// The URL of `endpoint` for `baseURL`. Accepts both base-URL
+  /// conventions by first reducing the base to the API root: a host root
+  /// (`https://openrouter.ai/api`, or a proxy path) is the root as-is,
+  /// while a base ending in the OpenAI-style `/v1`
+  /// (`https://openrouter.ai/api/v1`, what OpenAI-compatible SDKs use) has
+  /// that component dropped. Every endpoint then hangs off the one root.
+  package static func endpoint(_ endpoint: Endpoint, for baseURL: URL) -> URL {
     let lastComponent = baseURL.pathComponents.last { $0 != "/" }
-    return lastComponent == "v1"
-      ? baseURL.appending(path: "chat/completions")
-      : baseURL.appending(path: "v1/chat/completions")
+    let apiRoot = lastComponent == "v1" ? baseURL.deletingLastPathComponent() : baseURL
+    return switch endpoint {
+    case .chatCompletions: apiRoot.appending(path: "v1/chat/completions")
+    case .decisions: apiRoot.appending(path: "alpha/decisions")
+    }
   }
 
   private func urlRequest(
-    for body: ChatRequest,
+    _ endpoint: Endpoint,
+    body: some Encodable,
     headers: [String: String]
   ) throws -> URLRequest {
-    var req = URLRequest(url: Self.endpoint(for: configuration.baseURL))
+    var req = URLRequest(url: Self.endpoint(endpoint, for: configuration.baseURL))
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.setValue("text/event-stream", forHTTPHeaderField: "Accept")

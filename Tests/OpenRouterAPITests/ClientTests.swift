@@ -10,7 +10,7 @@ import Testing
 @testable import OpenRouterAPI
 
 /// Serves one canned response and records the request.
-private final class StubTransport: HTTPTransport {
+final class StubTransport: HTTPTransport {
   let status: Int
   let body: Data
   let headers: [String: String]?
@@ -95,7 +95,7 @@ private let okBody = Data(
       ("https://proxy.example.com/openrouter", "https://proxy.example.com/openrouter/v1/chat/completions"),
     ]
     for (base, expected) in cases {
-      let endpoint = OpenRouterClient.endpoint(for: URL(string: base)!)
+      let endpoint = OpenRouterClient.endpoint(.chatCompletions, for: URL(string: base)!)
       #expect(endpoint.absoluteString == expected, "base: \(base)")
     }
   }
