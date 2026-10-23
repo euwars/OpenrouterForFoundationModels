@@ -113,12 +113,12 @@ public struct DecisionState: Sendable, ExpressibleByStringLiteral, ExpressibleBy
           + (mediaType ?? "unrecognized bytes") + "."
       )
     }
-    var url = "data:\(mediaType);base64,\(data.base64EncodedString())"
     #if canImport(CoreGraphics) && canImport(ImageIO)
     if let normalized = try? OpenRouterImage(encoded: data) {
-      url = normalized.dataURL
+      return ["type": "image_url", "image_url": ["url": .string(normalized.dataURL)]]
     }
     #endif
+    let url = "data:\(mediaType);base64,\(data.base64EncodedString())"
     return ["type": "image_url", "image_url": ["url": .string(url)]]
   }
 }
