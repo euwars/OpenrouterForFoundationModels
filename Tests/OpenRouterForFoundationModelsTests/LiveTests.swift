@@ -79,6 +79,39 @@ struct LiveTests {
     // provider chooses to emit a summary.
     #expect(session.usage.output.reasoningTokenCount > 0)
   }
+
+  @Test(.timeLimit(.minutes(1)))
+  func `a decision model answers typed questions about text and an image`() async throws {
+    // One request covers the Decisions wire contract end to end: the alpha
+    // endpoint, bearer auth, a mixed text-and-image state, the three
+    // text-capable question types, and real answer decoding.
+    let model = OpenRouterDecisionModel(
+      name: "perplexity/pplx-decider-flash-v1.2",
+      auth: .apiKey(liveKey)
+    )
+    let decision = try await model.decide(
+      about: [
+        "Ticket: My checkout page shows a blank screen after I click Pay. I have tried two browsers.",
+        "Attached screenshot:",
+        .image(try #require(Data(base64Encoded: redSquarePNG))),
+      ],
+      .noul("Is the customer reporting a software defect?"),
+      .choice("What color fills the attached screenshot?", among: ["red", "green", "blue"]),
+      .score(
+        "How urgent is this ticket?",
+        levels: [
+          "Can wait for the next release", "Should be fixed this week",
+          "Blocking revenue right now",
+        ]
+      )
+    )
+    let (isBug, color, urgency) = decision.answers
+    #expect(isBug > 0.5, "the ticket plainly reports broken behavior")
+    #expect(color.choice == "red", "the image reached the model")
+    #expect((0...2).contains(urgency.score))
+    #expect(decision.servedModel.hasPrefix("perplexity/"))
+    #expect(decision.inputTokens > 0)
+  }
 }
 
 private struct WeatherTool: Tool {
@@ -95,3 +128,7 @@ private struct WeatherTool: Tool {
     "Sunny, 22°C in \(arguments.city)"
   }
 }
+
+/// A 256×256 solid red PNG (564 bytes).
+private let redSquarePNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAAB+0lEQVR42u3TQQkAAAjAwPUvrX8reHAJBmsK3pIAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgAJMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAyAASTAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADADHAllMDvLkz2XNAAAAAElFTkSuQmCC"
