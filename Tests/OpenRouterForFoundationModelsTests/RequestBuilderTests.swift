@@ -363,7 +363,7 @@ import Testing
     #expect(request.reasoning?.effort == nil)
   }
 
-  @Test func `anthropic models get top-level automatic cache control`() throws {
+  @Test func `anthropic models get top-level automatic cache control and a system breakpoint`() throws {
     let transcript = Transcript(entries: [
       .instructions(.init(segments: [.text(.init(content: "Be concise."))], toolDefinitions: [])),
       .prompt(.init(segments: [.text(.init(content: "Hi"))])),
@@ -372,9 +372,39 @@ import Testing
       from: .make(transcript: transcript),
       configuration: .make(model: "anthropic/claude-sonnet-4.5", caching: .automatic)
     )
-    // Top-level automatic cache control, no per-block markers.
+    // The tail moves with automatic caching; the system message is marked so the tools and
+    // instructions stay cached when a later request's history differs from the last one sent.
     #expect(request.cacheControl != nil)
-    #expect(request.messages[0].content == [.text("Be concise.")])
+    #expect(request.messages[0].content == [.text("Be concise.", cacheControl: CacheControl())])
+    #expect(request.messages[1].content == [.text("Hi")])
+  }
+
+  @Test func `an empty anthropic system message goes out unmarked`() throws {
+    let transcript = Transcript(entries: [
+      .instructions(.init(segments: [.text(.init(content: ""))], toolDefinitions: [])),
+      .prompt(.init(segments: [.text(.init(content: "Hi"))])),
+    ])
+    let request = try RequestBuilder.build(
+      from: .make(transcript: transcript),
+      configuration: .make(model: "anthropic/claude-sonnet-4.5", caching: .automatic)
+    )
+    #expect(request.messages[0].content.allSatisfy {
+      if case .text(_, let control) = $0 { return control == nil }
+      return true
+    })
+  }
+
+  @Test func `an anthropic system breakpoint keeps the extended retention`() throws {
+    let transcript = Transcript(entries: [
+      .instructions(.init(segments: [.text(.init(content: "Be concise."))], toolDefinitions: [])),
+      .prompt(.init(segments: [.text(.init(content: "Hi"))])),
+    ])
+    let request = try RequestBuilder.build(
+      from: .make(transcript: transcript),
+      configuration: .make(model: "anthropic/claude-sonnet-4.5", caching: .extended)
+    )
+    #expect(
+      request.messages[0].content == [.text("Be concise.", cacheControl: CacheControl(ttl: "1h"))])
     #expect(request.messages[1].content == [.text("Hi")])
   }
 

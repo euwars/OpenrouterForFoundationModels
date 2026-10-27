@@ -12,7 +12,7 @@ import Foundation
 /// analytics, not a trust boundary. OpenRouter's own app attribution rides on
 /// the `HTTP-Referer` / `X-Title` headers, set by the bridge.
 package enum Telemetry {
-  package static let sdkVersion = "0.5.0"
+  package static let sdkVersion = "0.5.1"
 
   package static var userAgent: String {
     let app = appComponent.map { "\($0); " } ?? ""

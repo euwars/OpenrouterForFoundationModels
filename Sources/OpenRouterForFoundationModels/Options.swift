@@ -167,7 +167,9 @@ public enum ServiceTier: String, Sendable, Hashable {
 /// markers. Anthropic and Gemini require explicit `cache_control` breakpoints
 /// on content blocks; under `.automatic` the bridge marks the system message
 /// and the final user message each turn, so a growing conversation re-reads
-/// its prefix from cache. Providers that don't use breakpoints ignore them.
+/// its prefix from cache. Anthropic-family models get top-level automatic
+/// `cache_control` for the tail and a marker on the system message alone.
+/// Providers that don't use breakpoints ignore them.
 public enum CachePolicy: Sendable, Hashable {
   /// Ephemeral breakpoints (~5 minute retention) on the system message and
   /// the last user message.

@@ -458,8 +458,8 @@ enum RequestBuilder {
 
   // MARK: - Caching
 
-  /// Anthropic-family model IDs get top-level automatic `cache_control`
-  /// instead of per-block markers (including the `~anthropic/...` alias
+  /// Anthropic-family model IDs get top-level automatic `cache_control` and a
+  /// marker on the system message only (including the `~anthropic/...` alias
   /// namespace).
   static func isAnthropicFamily(_ modelID: String) -> Bool {
     modelID.hasPrefix("anthropic/") || modelID.hasPrefix("~anthropic/")
@@ -468,14 +468,15 @@ enum RequestBuilder {
   /// Breakpoints go on the system message and the final user message: the
   /// system prefix is stable across turns, and marking the conversation tail
   /// lets the next turn read everything before it as a cache hit. Providers
-  /// with automatic caching ignore the markers. Anthropic-family models skip
-  /// these — they use top-level automatic `cache_control` instead.
+  /// with automatic caching ignore the markers. Anthropic-family models mark
+  /// the system message only, since top-level automatic `cache_control` moves
+  /// with the tail; without it, a request whose history differs from the last
+  /// one sent read none of the unchanged tools and instructions from cache.
   private static func applyCacheBreakpoints(
     to messages: inout [ChatMessage],
     policy: CachePolicy,
     modelID: String
   ) {
-    guard !isAnthropicFamily(modelID) else { return }
     let control: CacheControl
     switch policy {
     case .disabled: return
@@ -484,8 +485,10 @@ enum RequestBuilder {
     }
 
     func markLastTextPart(of index: Int) {
+      // An empty text block with a marker is refused by Anthropic; an empty
+      // system message goes out unmarked, as it did before.
       let isText = { (part: ContentPart) -> Bool in
-        if case .text = part { return true }
+        if case .text(let text, _) = part { return !text.isEmpty }
         return false
       }
       guard let partIndex = messages[index].content.lastIndex(where: isText) else { return }
@@ -495,6 +498,7 @@ enum RequestBuilder {
     if let systemIndex = messages.firstIndex(where: { $0.role == .system }) {
       markLastTextPart(of: systemIndex)
     }
+    guard !isAnthropicFamily(modelID) else { return }
     if let userIndex = messages.lastIndex(where: { $0.role == .user }) {
       markLastTextPart(of: userIndex)
     }

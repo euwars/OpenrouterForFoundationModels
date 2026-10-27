@@ -252,7 +252,7 @@ for case .response(let response) in session.transcript {
 
 ## Prompt caching
 
-Providers that cache automatically (OpenAI, DeepSeek, Groq, …) need nothing. For providers that want explicit markers, the bridge applies the right mechanism per model family: Anthropic models get top-level automatic `cache_control` (the breakpoint advances with the conversation), while Gemini, Qwen, and other breakpoint providers get `cache_control` markers on the system message and the final user message. Either way a growing conversation re-reads its prefix from cache.
+Providers that cache automatically (OpenAI, DeepSeek, Groq, …) need nothing. For providers that want explicit markers, the bridge applies the right mechanism per model family: Anthropic models get top-level automatic `cache_control` (the breakpoint advances with the conversation) plus a marker on the system message, so the tools and instructions stay cached when a request's history differs from the last one sent, while Gemini, Qwen, and other breakpoint providers get `cache_control` markers on the system message and the final user message. Either way a growing conversation re-reads its prefix from cache.
 
 ```swift
 OpenRouterLanguageModel(name: model, auth: auth, caching: .automatic)  // default, ~5 min TTL

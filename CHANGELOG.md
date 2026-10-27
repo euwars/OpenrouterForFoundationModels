@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 (2026-10-28)
+
+- Anthropic-family requests mark the system message's last text part with
+  `cache_control`, at the same retention as the top-level automatic marker.
+  Before, they carried only the top-level marker, which moves with the tail,
+  so a request whose history differed from the previous one read none of the
+  unchanged tools and instructions from cache; measured with
+  anthropic/claude-sonnet-5.5, such a request read 0 of 11,181 prompt tokens
+  from cache before and 9,940 after, and its first token came about 0.5 s
+  sooner. An empty system message is left unmarked, as Anthropic refuses an
+  empty marked block.
+
 ## 0.5.0 (2026-10-23)
 
 The framework is chosen by platform. The bridge compiles against Apple's
