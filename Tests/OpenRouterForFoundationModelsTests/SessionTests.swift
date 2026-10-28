@@ -251,6 +251,38 @@ import Testing
     #expect((toolMessage["content"] as? String)?.contains("Sunny") == true)
   }
 
+  @Test func `encrypted reasoning before a tool call replays on the tool call's message`()
+    async throws
+  {
+    let transport = MockTransport(
+      responses: [
+        (
+          200,
+          toolCallTurnSSE(
+            id: "call_1",
+            name: "get_weather",
+            argumentChunks: [#"{"city":"SF"}"#],
+            detailChunks: [#"{"type":"reasoning.text","index":0,"signature":"sig123"}"#]
+          )
+        ),
+        (200, textTurnSSE(deltas: ["72F and sunny."])),
+      ]
+    )
+    let session = LanguageModelSession(
+      model: StubbedOpenRouterModel(transport: transport),
+      tools: [WeatherTool()]
+    )
+    _ = try await session.respond(to: "Weather in SF?")
+
+    // Anthropic refuses a request whose last assistant message is only reasoning.
+    let body = try requestBody(of: transport, at: 1)
+    let messages = try #require(body["messages"] as? [[String: Any]])
+    #expect(messages.last?["role"] as? String == "tool")
+    let calling = try #require(messages.first { $0["tool_calls"] != nil })
+    let replayed = try #require(calling["reasoning_details"] as? [[String: Any]])
+    #expect(replayed.first?["signature"] as? String == "sig123")
+  }
+
   @Test func `guided generation sends strict response_format and decodes the result`()
     async throws
   {

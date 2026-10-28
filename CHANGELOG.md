@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2 (2026-10-28)
+
+- Encrypted reasoning that streams before a tool call now replays on that tool
+  call's assistant message. Before, a model whose reasoning arrived only as
+  `reasoning_details` with no reasoning text (anthropic/claude-haiku-5.5 served
+  by Google Vertex) had its reasoning entry created at the end of the stream,
+  after the tool calls, so the next request ended in an assistant message
+  holding only reasoning, and Anthropic refused it with HTTP 400 ("The final
+  block in an assistant message cannot be `thinking`"). The entry now opens on
+  the first details delta. For such a stream followed by text, the transcript
+  now lists the reasoning entry before the response instead of after it; the
+  request sent next turn is the same.
+
 ## 0.5.1 (2026-10-28)
 
 - Anthropic-family requests mark the system message's last text part with

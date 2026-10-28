@@ -132,7 +132,20 @@ struct EventTranslator: Sendable {
         }
 
         if let reasoningDetails = delta.reasoningDetails {
+          // Open the entry now, not at the end of the stream, so encrypted
+          // reasoning keeps its place before the tool calls that follow it;
+          // created last, it replays as a trailing reasoning-only assistant
+          // message, which Anthropic refuses.
+          let opens = details.isEmpty
           details.merge(reasoningDetails)
+          if opens, !details.isEmpty {
+            await channel.send(
+              .reasoning(
+                entryID: reasoningEntryID,
+                action: .updateMetadata([reasoningDetailsMetadataKey: true])
+              )
+            )
+          }
         }
 
         if let annotations = delta.annotations {
@@ -246,16 +259,9 @@ struct EventTranslator: Sendable {
       )
     }
 
-    // Persist accumulated reasoning_details on the reasoning entry. This
-    // also creates the entry when a model streams only encrypted reasoning
-    // (no reasoning text at all) — the blocks must still replay next turn.
+    // Persist accumulated reasoning_details on the reasoning entry, which the
+    // first details delta opened, so the blocks replay next turn.
     if let payload = details.encodedJSON {
-      await channel.send(
-        .reasoning(
-          entryID: reasoningEntryID,
-          action: .updateMetadata([reasoningDetailsMetadataKey: true])
-        )
-      )
       await channel.send(
         .reasoning(
           entryID: reasoningEntryID,
@@ -373,6 +379,8 @@ struct ReasoningDetailAccumulator {
       }
     }
   }
+
+  var isEmpty: Bool { blocks.isEmpty }
 
   /// The accumulated blocks in stream order, JSON-encoded, or nil when no
   /// details arrived.

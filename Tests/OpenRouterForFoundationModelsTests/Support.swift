@@ -70,11 +70,20 @@ func reasoningTurnSSE(
   return sseBody(payloads)
 }
 
-/// A turn that streams one tool call with fragmented arguments.
-func toolCallTurnSSE(id: String, name: String, argumentChunks: [String]) -> Data {
-  var payloads = [
+/// A turn that streams one tool call with fragmented arguments, after any
+/// `reasoning_details` chunks, as a model with encrypted reasoning does.
+func toolCallTurnSSE(
+  id: String,
+  name: String,
+  argumentChunks: [String],
+  detailChunks: [String] = []
+) -> Data {
+  var payloads = detailChunks.map {
+    #"{"id":"gen-1","choices":[{"delta":{"role":"assistant","reasoning_details":[\#($0)]}}]}"#
+  }
+  payloads.append(
     #"{"id":"gen-1","choices":[{"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"\#(id)","type":"function","function":{"name":"\#(name)","arguments":""}}]}}]}"#
-  ]
+  )
   for chunk in argumentChunks {
     payloads.append(
       #"{"id":"gen-1","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":\#(jsonEscaped(chunk))}}]}}]}"#
